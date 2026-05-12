@@ -1,3 +1,6 @@
+# Secrets
+.env
+
 # Python
 __pycache__/
 *.py[cod]
@@ -33,7 +36,6 @@ env/
 *.swp
 *.swo
 
-# Large files (optional, we keep our current small data files)
-# *.csv
-# *.parquet
-# *.xls
+# Large files
+data/tankerkoenig/
+data/tankerkoenig-repo/
