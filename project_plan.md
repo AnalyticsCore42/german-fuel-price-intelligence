@@ -37,7 +37,8 @@ Last updated: 2026-05-21
 - [x] `start_dashboard.py` — IDE-runnable Python launcher for Streamlit server
 
 ## Phase 5: Planned / Future
-- [ ] Fix event study post-event average window (currently uses full slider window; should cap at 14 days for the verdict)
-- [ ] pytest suite for `scripts/02_tax_engine.py` — boundary tests for tax-break dates
-- [ ] RAG pipeline evaluation — text-to-SQL over the parquet files via DuckDB + LLM tool-calling, to enable natural language queries on price/margin data
-- [ ] Deploy to Streamlit Cloud or self-hosted server
+
+1. pytest suite for `scripts/02_tax_engine.py` — boundary tests for tax-break dates
+2. Brand analysis — compare margins and pricing behavior across gas station brands (Shell, Aral, Jet, etc.) in general and specifically during the Tankrabatt periods
+3. RAG pipeline evaluation — text-to-SQL over the parquet files via DuckDB + LLM tool-calling, to enable natural language queries on price/margin data
+4. Deploy to Streamlit Cloud or self-hosted server
