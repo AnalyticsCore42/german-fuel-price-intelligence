@@ -42,9 +42,18 @@ These must be treated differently in analysis. They are not single corporations 
 - **SUPERMARKT & TANKCENTER**
 - **The Connection:** These are data categorization tags from the MTS-K (Markttransparenzstelle). They represent stations physically tied to large grocery retailers (Kaufland, Globus, Famila, V-Markt). "Tankcenter" is specifically often tied to Edeka supermarkets.
 
-## 9. The Singular Corporate Entities
+## 9. The Oilinvest Group (Libyan State)
+- **HEM**
+- **T (Tamoil)**
+- **The Connection:** Both HEM and Tamoil are owned by the Oilinvest Group, which was founded by the Libyan state to consolidate European energy assets. In our data, "T" and "HEM" should be grouped together under the Tamoil/Oilinvest umbrella.
+
+## 10. The Mabanaft / Marquard & Bahls Group
+- **CLASSIC**
+- **CALPAM**
+- **The Connection:** Both of these mid-sized networks operate under the umbrella of Mabanaft (Marquard & Bahls). Mabanaft historically owned **OIL!** as well, but the OIL! network was acquired by the British Prax Group in 2024.
+
+## 11. The Singular Corporate Entities
 These brands operate mostly autonomously under their respective parent companies:
 - **SHELL:** Shell plc.
-- **JET:** Owned by Phillips 66. (Known for being an aggressive price-discounter).
-- **HEM:** Owned by Tamoil (which is part of the Oilinvest Group).
-- **OIL!:** Historically owned by the German Marquard & Bahls group (Mabanaft), but parts of the network were acquired by the British Prax Group in late 2023.
+- **JET:** Historically Phillips 66. In late 2024, a deal was struck where Stonepeak acquired 65% and Phillips 66 retained 35%. They are known for being an aggressive price-discounter.
+- **OIL!:** Acquired by the British Prax Group from Mabanaft in 2024.
