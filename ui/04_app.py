@@ -1,21 +1,23 @@
 """
 Script: 04_app.py
 Description: Premium Streamlit dashboard for German Gasoline Prices Analysis.
-             Uses real macro data (Brent/EUR-USD baseline) + vectorized mock retail data.
-             Swap out mock generation with real Tankerkönig data when it arrives.
-Inputs:  ../data/processed_macro_baseline_1999_2026.parquet
+             Uses real Tankerkoenig price data plus Brent/EUR-USD macro data.
+Inputs:  ../data/processed_daily_margins.parquet
+         ../data/processed_intraday.parquet
 Outputs: Interactive dark-mode dashboard on http://localhost:8501
 """
 
 import streamlit as st
 import polars as pl
 import plotly.graph_objects as go
-import plotly.express as px
-from datetime import date
+import os
+from math import erfc, sqrt
+from datetime import date, timedelta
 from pathlib import Path
 
 # Resolve data path relative to this script file — works from any working directory
 DATA_DIR = Path(__file__).parent.parent / "data"
+INTRADAY_FILE = DATA_DIR / "processed_intraday.parquet"
 
 # ==========================================
 # 1. SETUP & CONFIGURATION
@@ -26,7 +28,7 @@ st.set_page_config(
     page_icon="⛽",
     layout="wide",
     initial_sidebar_state="expanded",
-    menu_items={"About": "German Fuel Corporate Margin Analysis — Phase 4 Dashboard"}
+    menu_items={"About": "German Fuel Price Spread Analysis — Phase 4 Dashboard"}
 )
 
 # ---- CSS: Modern dark dashboard with glassmorphism metric cards ----
@@ -119,7 +121,7 @@ PLOT_LAYOUT = dict(
 )
 
 ACCENT      = "#F5A623"   # amber / energy
-ACCENT_ALT  = "#22C55E"   # green / positive margin
+ACCENT_ALT  = "#22C55E"   # green / reference
 DANGER      = "#EF4444"   # red / warning
 BLUE        = "#3B82F6"   # blue / reference
 
@@ -129,18 +131,255 @@ DISCOUNT_PERIODS = [
     ("2026-05-01", "2026-06-30", "2nd Fuel Discount (Tankrabatt 2)"),
 ]
 
+# Official legislative milestones per event, sourced from docs/policy_timeline_tankrabatt.md
+# Each tuple: (phase_label, relative_day_from_effective, color)
+# Relative day = calendar_date - effective_date, always negative (pre-event)
+POLICY_MILESTONES = {
+    "Tankrabatt 1 Start (Jun 2022)": [
+        # (phase_label, date, hex_color)
+        ("Public Rumour (Lindner)",   date(2022, 3, 14), "#6B7280"),   # Day −79 — grey
+        ("Official Announcement",    date(2022, 3, 24), "#F5A623"),   # Day −69 — amber
+        ("Draft Law (Bundestag)",    date(2022, 5, 10), "#60A5FA"),   # Day −22 — light blue
+        ("Parliamentary Vote ✓",     date(2022, 5, 19), "#3B82F6"),   # Day −13 — blue / legal certainty
+    ],
+    "Tankrabatt 1 End (Sep 2022)": [
+        # End was legally certain from Day 1 of the discount (fixed 3-month term in the law)
+        # The only "anticipation" milestone is the start of the discount itself (Day −92)
+        ("Expiry Legally Fixed",     date(2022, 6, 1),  "#F5A623"),   # Day −92 — amber / known from start
+    ],
+    "Tankrabatt 2 Start (May 2026)": [
+        ("Announcement + Draft Law", date(2026, 4, 15), "#F5A623"),   # Day −16 — amber
+        ("Parliamentary Vote ✓",     date(2026, 4, 24), "#10B981"),   # Day −7  — green / legal certainty
+    ],
+}
+
+TRANSLATIONS = {
+    "en": {
+        "language": "Language",
+        "app_short": "Fuel Prices",
+        "app_subtitle": "Germany Fuel Price Spread Analysis",
+        "date_range": "Date Range",
+        "date_range_help": "Filter all charts to this date window",
+        "fuel_type": "Fuel Type",
+        "tax_viz": "Tax Visualization (Tab 1)",
+        "tax_viz_help": "Visualize how taxes bridge the gap between raw material cost and the pump price.",
+        "hide_taxes": "Hide Taxes",
+        "taxes_combined": "Total Taxes (Combined)",
+        "taxes_detailed": "Taxes (Detailed Breakdown)",
+        "tax_trend": "Show Tax Burden Trend",
+        "tax_trend_help": "Show the percentage of pump price that goes to taxes.",
+        "data_sources": "Data: EIA · ECB · Tankerkoenig",
+        "main_title": "German Fuel Price — Net Product Spread Tracker",
+        "main_subtitle": "Where did the 2022 & 2026 fuel tax discounts actually go?",
+        "brent": "Brent Crude (EUR/L)",
+        "raw_material_cost": "Raw Material Cost",
+        "pump_price": "Pump Price",
+        "national_avg": "National Average",
+        "net_spread": "Net Product Spread",
+        "spread_delta_discount_1": "Spread Δ During Discount 1",
+        "pre_discount_compared": "Pre-discount baseline compared",
+        "spread_kpi_note": "After taxes, before refining/retail costs",
+        "tab_brent": "📈  Brent vs Pump",
+        "tab_spread": "💰  Net Product Spread",
+        "tab_rhythm": "⏱️  Daily Rhythm",
+        "tab_location": "🗺️  Location Premium",
+        "brent_vs_pump_title": "Retail Pump Price vs. Raw Brent Crude",
+        "brent_vs_pump_note": "The gap between the two lines contains taxes plus the net product spread over Brent. That spread still includes refining, logistics, retail operations, overhead, and profit.",
+        "spread_trace": "Net Product Spread",
+        "spread_hover": "Spread",
+        "total_taxes": "Total Taxes",
+        "vat": "Value Added Tax (VAT)",
+        "energy_tax": "Energy Tax",
+        "co2": "CO₂ Pricing",
+        "ebv": "EBV Contribution",
+        "tax_burden_title": "Tax Burden Trendline",
+        "tax_burden_note": "Percentage of pump price comprised of taxes (VAT, Energy Tax, CO₂, EBV), smoothed over 90 days.",
+        "tax_percent": "Taxes (% of Pump Price)",
+        "spread_title": "Isolated Net Product Spread Over Time",
+        "spread_note": "After stripping VAT, Energy Tax, CO₂, and EBV, this is the pump-price spread over Brent crude. It is not profit; it still contains refining, transport, retail costs, overhead, and profit.",
+        "historical_avg": "Historical avg",
+        "pre_discount_avg": "Pre-Discount Avg",
+        "during_discount_1": "During Discount 1",
+        "historical_range": "Historical Range",
+        "pass_title": "Fuel Tax Break Pass-Through",
+        "pass_note": "Compares the drop in pump prices during each tax-break period with the drop in taxes collected per liter. Commodity-price changes still affect the result, so this is a practical pass-through estimate, not a causal proof.",
+        "event": "Event",
+        "pump_drop": "Pump price drop",
+        "tax_drop": "Tax drop",
+        "spread_change": "Spread change",
+        "raw_change": "Brent change",
+        "pass_through": "Pass-through",
+        "comparison_window": "Comparison window",
+        "event_study_title": "Event Study: Margins Trajectory Around Policy Shocks",
+        "event_study_note": "A dynamic Event Study mapping the daily trajectories of the Net Product Spread from Day -60 to Day +60 around each policy shock. Normalizing relative to the pre-event baseline isolates clean margins behavior.",
+        "event_window": "Timeline window (days before/after)",
+        "event_window_help": "Number of calendar days before and after each tax switch to map.",
+        "switch": "Switch",
+        "before": "Before",
+        "after": "After",
+        "n_days": "n days",
+        "pump_change": "Pump price change",
+        "tax_change": "Tax change",
+        "raw_adjusted_change": "Raw-adjusted price change",
+        "p_value": "p-value",
+        "evidence": "Evidence",
+        "strong": "strong",
+        "moderate": "moderate",
+        "weak": "weak",
+        "tax_break_on_2022": "Tax break starts / 2022",
+        "tax_break_off_2022": "Tax break ends / 2022",
+        "tax_break_on_2026": "Tax break starts / 2026",
+        "rhythm_title": "Average Price by Hour of Day",
+        "rhythm_note": "Hourly station-level averages are reconstructed from price-change logs by carrying each station's last known price forward. Compare timeframes to see when price levels actually sit low or high.",
+        "intraday_missing": "Intraday rhythm data is not generated yet. Run `python3 scripts/04_build_dashboard_dataset.py` once to create `data/processed_intraday.parquet`.",
+        "compare_timeframes": "Compare Timeframes",
+        "all_time": "All-Time Average (2021-2026)",
+        "last_7": "Last 7 Days",
+        "last_30": "Last 30 Days",
+        "discount_2022": "1st Fuel Discount (Jun-Aug 2022)",
+        "discount_2026": "2nd Fuel Discount (May-Jun 2026)",
+        "baseline_2021": "2021 Baseline",
+        "peak": "Peak",
+        "lowest": "Lowest",
+        "hour_of_day": "Hour of Day",
+        "avg_pump_price": "Avg Pump Price (€/L)",
+        "lowest_info": "Lowest hourly average (primary trend)",
+        "below_peak": "below the peak",
+        "per_tank": "Over 50L that is",
+        "location_title": "Price Premium by Station Location Type",
+        "location_note": "Autobahn stations exploit captive motorists with no alternative. Rural and suburban stations compete more aggressively.",
+        "autobahn_premium": "Autobahn Premium vs Rural",
+        "tank_extra": "Cost per 50L Tank (Autobahn vs Rural)",
+        "captive_pricing": "Captive demand pricing",
+    },
+    "de": {
+        "language": "Sprache",
+        "app_short": "Tankpreise",
+        "app_subtitle": "Analyse der deutschen Kraftstoffpreis-Spanne",
+        "date_range": "Zeitraum",
+        "date_range_help": "Filtert alle Diagramme auf diesen Zeitraum",
+        "fuel_type": "Kraftstoffart",
+        "tax_viz": "Steueransicht (Tab 1)",
+        "tax_viz_help": "Zeigt, wie Steuern die Lücke zwischen Rohstoffkosten und Zapfsäulenpreis erklären.",
+        "hide_taxes": "Steuern ausblenden",
+        "taxes_combined": "Steuern gesamt",
+        "taxes_detailed": "Steuern im Detail",
+        "tax_trend": "Steueranteil anzeigen",
+        "tax_trend_help": "Zeigt, welcher Anteil des Zapfsäulenpreises auf Steuern entfällt.",
+        "data_sources": "Daten: EIA · EZB · Tankerkönig",
+        "main_title": "Deutsche Tankpreise — Netto-Produktspanne",
+        "main_subtitle": "Wo sind die Tankrabatte 2022 und 2026 tatsächlich angekommen?",
+        "brent": "Brent-Rohöl (EUR/L)",
+        "raw_material_cost": "Rohstoffkosten",
+        "pump_price": "Zapfsäulenpreis",
+        "national_avg": "Bundesweiter Durchschnitt",
+        "net_spread": "Netto-Produktspanne",
+        "spread_delta_discount_1": "Spannenänderung im Tankrabatt 1",
+        "pre_discount_compared": "Vergleich mit Vor-Tankrabatt-Zeitraum",
+        "spread_kpi_note": "Nach Steuern, vor Raffinerie-/Handelskosten",
+        "tab_brent": "📈  Brent vs. Zapfsäule",
+        "tab_spread": "💰  Netto-Produktspanne",
+        "tab_rhythm": "⏱️  Tagesrhythmus",
+        "tab_location": "🗺️  Standortaufschlag",
+        "brent_vs_pump_title": "Zapfsäulenpreis vs. Brent-Rohöl",
+        "brent_vs_pump_note": "Die Lücke zwischen den Linien enthält Steuern plus Netto-Produktspanne über Brent. Diese Spanne enthält weiterhin Raffinerie, Logistik, Stationsbetrieb, Gemeinkosten und Gewinn.",
+        "spread_trace": "Netto-Produktspanne",
+        "spread_hover": "Spanne",
+        "total_taxes": "Steuern gesamt",
+        "vat": "Mehrwertsteuer",
+        "energy_tax": "Energiesteuer",
+        "co2": "CO₂-Preis",
+        "ebv": "EBV-Beitrag",
+        "tax_burden_title": "Entwicklung der Steuerbelastung",
+        "tax_burden_note": "Anteil des Zapfsäulenpreises, der aus Steuern besteht (MwSt., Energiesteuer, CO₂, EBV), geglättet über 90 Tage.",
+        "tax_percent": "Steuern (% des Zapfsäulenpreises)",
+        "spread_title": "Isolierte Netto-Produktspanne im Zeitverlauf",
+        "spread_note": "Nach Abzug von MwSt., Energiesteuer, CO₂ und EBV bleibt die Spanne des Zapfsäulenpreises über Brent. Das ist kein Gewinn; enthalten sind weiterhin Raffinerie, Transport, Stationsbetrieb, Gemeinkosten und Gewinn.",
+        "historical_avg": "Historischer Durchschnitt",
+        "pre_discount_avg": "Vor-Tankrabatt-Durchschnitt",
+        "during_discount_1": "Während Tankrabatt 1",
+        "historical_range": "Historische Spanne",
+        "pass_title": "Weitergabe des Tankrabatts",
+        "pass_note": "Vergleicht den Rückgang der Zapfsäulenpreise während des Tankrabatts mit dem Rückgang der erhobenen Steuern pro Liter. Rohstoffpreisänderungen beeinflussen das Ergebnis, daher ist dies eine praktische Weitergabe-Schätzung, kein kausaler Beweis.",
+        "event": "Ereignis",
+        "pump_drop": "Preisrückgang",
+        "tax_drop": "Steuerrückgang",
+        "spread_change": "Spannenänderung",
+        "raw_change": "Brent-Änderung",
+        "pass_through": "Weitergabe",
+        "comparison_window": "Vergleichszeitraum",
+        "event_study_title": "Ereignisstudie: Verlauf der Margen um Steuerschocks",
+        "event_study_note": "Eine dynamische Ereignisstudie, die den täglichen Verlauf der Netto-Produktspanne von Tag -60 bis Tag +60 um jeden politischen Steuerschock abbildet. Die Normalisierung relativ zur Vor-Ereignis-Basislinie isoliert das saubere Spannenverhalten.",
+        "event_window": "Zeitfenster (Tage davor/danach)",
+        "event_window_help": "Anzahl der Kalendertage vor und nach jedem Steuerschalter für die Darstellung.",
+        "switch": "Schalter",
+        "before": "Vorher",
+        "after": "Nachher",
+        "n_days": "n Tage",
+        "pump_change": "Preisänderung",
+        "tax_change": "Steueränderung",
+        "raw_adjusted_change": "Rohstoffbereinigte Preisänderung",
+        "p_value": "p-Wert",
+        "evidence": "Evidenz",
+        "strong": "stark",
+        "moderate": "mittel",
+        "weak": "schwach",
+        "tax_break_on_2022": "Tankrabatt startet / 2022",
+        "tax_break_off_2022": "Tankrabatt endet / 2022",
+        "tax_break_on_2026": "Tankrabatt startet / 2026",
+        "rhythm_title": "Durchschnittspreis nach Tagesstunde",
+        "rhythm_note": "Stündliche Stationsdurchschnitte werden aus Preisänderungsprotokollen rekonstruiert, indem der letzte bekannte Stationspreis fortgeschrieben wird. So sieht man, wann das Preisniveau wirklich niedrig oder hoch liegt.",
+        "intraday_missing": "Die Intraday-Daten wurden noch nicht erzeugt. Führe einmal `python3 scripts/04_build_dashboard_dataset.py` aus, um `data/processed_intraday.parquet` zu erstellen.",
+        "compare_timeframes": "Zeiträume vergleichen",
+        "all_time": "Gesamtdurchschnitt (2021-2026)",
+        "last_7": "Letzte 7 Tage",
+        "last_30": "Letzte 30 Tage",
+        "discount_2022": "1. Tankrabatt (Jun-Aug 2022)",
+        "discount_2026": "2. Tankrabatt (Mai-Jun 2026)",
+        "baseline_2021": "Basisjahr 2021",
+        "peak": "Hochpunkt",
+        "lowest": "Tiefpunkt",
+        "hour_of_day": "Tagesstunde",
+        "avg_pump_price": "Durchschn. Zapfsäulenpreis (€/L)",
+        "lowest_info": "Niedrigster Stundendurchschnitt (primäre Linie)",
+        "below_peak": "unter dem Hochpunkt",
+        "per_tank": "Bei 50L entspricht das",
+        "location_title": "Preisaufschlag nach Standorttyp",
+        "location_note": "Autobahnstationen bedienen gebundene Nachfrage mit weniger Alternativen. Ländliche und suburbane Stationen stehen stärker im Wettbewerb.",
+        "autobahn_premium": "Autobahnaufschlag vs. ländlich",
+        "tank_extra": "Mehrkosten pro 50L-Tank (Autobahn vs. ländlich)",
+        "captive_pricing": "Gebundene Nachfrage",
+    },
+}
+
+
+def detect_default_language() -> str:
+    candidates = []
+    try:
+        candidates.append(st.context.locale)
+    except Exception:
+        pass
+    candidates.append(os.environ.get("LANG", ""))
+    return "de" if any(str(value).lower().startswith("de") for value in candidates if value) else "en"
+
 # ==========================================
 # 2. DATA PIPELINE (Vectorized — no loops)
 # ==========================================
 
-@st.cache_data(show_spinner="Loading aggregated margins + taxes…")
+@st.cache_data(show_spinner="Loading aggregated spreads + taxes…")
 def load_data(start_date: date = date(2021, 1, 1)):
     """
-    Loads the real aggregated daily margins (Tankerkönig + Macro).
+    Loads the real aggregated daily spreads (Tankerkönig + Macro).
     """
-    df = pl.read_parquet(DATA_DIR / "processed_daily_margins_2021_2026.parquet")
+    df = pl.read_parquet(DATA_DIR / "processed_daily_margins.parquet")
     df = df.filter(pl.col("date") >= start_date)
     return df
+
+@st.cache_data(show_spinner="Loading intraday rhythm…")
+def load_intraday_data():
+    if not INTRADAY_FILE.exists():
+        return None
+    return pl.read_parquet(INTRADAY_FILE)
 
 # ── Intraday mock (static, not date-dependent) ────────────────────────────────
 @st.cache_data
@@ -167,9 +406,25 @@ def get_geo_data():
 # 3. SIDEBAR — Controls
 # ==========================================
 
+default_language = detect_default_language()
+language_labels = {"en": "English", "de": "Deutsch"}
+language_index = list(language_labels).index(default_language)
+
 with st.sidebar:
-    st.markdown("## ⛽ Tankpreise")
-    st.markdown("<div style='color:#8892A4;font-size:0.8rem;margin-bottom:16px;'>Germany Fuel Margin Analysis</div>", unsafe_allow_html=True)
+    selected_language = st.selectbox(
+        "Language / Sprache",
+        options=list(language_labels),
+        index=language_index,
+        format_func=lambda key: language_labels[key],
+    )
+    lang = selected_language
+    tx = TRANSLATIONS[lang]
+
+    def t(key: str) -> str:
+        return tx[key]
+
+    st.markdown(f"## ⛽ {t('app_short')}")
+    st.markdown(f"<div style='color:#8892A4;font-size:0.8rem;margin-bottom:16px;'>{t('app_subtitle')}</div>", unsafe_allow_html=True)
     st.divider()
 
     df_full = load_data()
@@ -180,34 +435,46 @@ with st.sidebar:
     max_d = raw_max.to_python() if hasattr(raw_max, 'to_python') else raw_max
 
     date_range = st.slider(
-        "Date Range",
+        t("date_range"),
         min_value=min_d, max_value=max_d,
         value=(date(2022, 1, 1), max_d),
-        help="Filter all charts to this date window"
+        help=t("date_range_help")
     )
 
-    fuel_type = st.selectbox(
-        "Fuel Type",
-        ["Super E5", "Super E10", "Diesel"],
+    fuel_options = {"e5": "Super E5", "e10": "Super E10", "diesel": "Diesel"}
+    fuel_key = st.selectbox(
+        t("fuel_type"),
+        list(fuel_options),
         index=0
+        , format_func=lambda key: fuel_options[key]
     )
+    fuel_type = fuel_options[fuel_key]
 
+    tax_viz_options = {
+        "hide": t("hide_taxes"),
+        "combined": t("taxes_combined"),
+        "detailed": t("taxes_detailed"),
+    }
     tax_viz = st.selectbox(
-        "Tax Visualization (Tab 1)",
-        ["Hide Taxes", "Total Taxes (Combined)", "Taxes (Detailed Breakdown)"],
+        t("tax_viz"),
+        list(tax_viz_options),
         index=2,
-        help="Visualize how taxes bridge the gap between raw material cost and the pump price."
+        format_func=lambda key: tax_viz_options[key],
+        help=t("tax_viz_help")
     )
 
     st.divider()
-    st.markdown("<div style='color:#4A5568;font-size:0.72rem;margin-top:auto;padding-top:24px;'>Data: EIA · ECB · Tankerkönig</div>", unsafe_allow_html=True)
+    show_tax_trend = st.checkbox(t("tax_trend"), value=False, help=t("tax_trend_help"))
+    
+    st.divider()
+    st.markdown(f"<div style='color:#4A5568;font-size:0.72rem;margin-top:auto;padding-top:24px;'>{t('data_sources')}</div>", unsafe_allow_html=True)
 
 # ==========================================
 # 4. MAIN AREA
 # ==========================================
 
-st.markdown("## German Fuel Price — Corporate Margin Tracker")
-st.markdown("<div style='color:#8892A4;margin-bottom:24px;'>Where did the 2022 & 2026 fuel tax discounts actually go?</div>", unsafe_allow_html=True)
+st.markdown(f"## {t('main_title')}")
+st.markdown(f"<div style='color:#8892A4;margin-bottom:24px;'>{t('main_subtitle')}</div>", unsafe_allow_html=True)
 
 # Filter based on sidebar date range
 df = df_full.filter(
@@ -216,25 +483,25 @@ df = df_full.filter(
 
 # Map fuel type selection to column names
 col_map = {
-    "Super E5": {
+    "e5": {
         "price": "price_e5", "margin": "margin_e5", "net": "e5_net_price",
         "vat": "e5_vat", "ebv": "e5_ebv", "co2": "e5_co2", "energy": "e5_energy"
     },
-    "Super E10": {
+    "e10": {
         "price": "price_e10", "margin": "margin_e10", "net": "e10_net_price",
         "vat": "e10_vat", "ebv": "e10_ebv", "co2": "e10_co2", "energy": "e10_energy"
     },
-    "Diesel": {
+    "diesel": {
         "price": "price_diesel", "margin": "margin_diesel", "net": "diesel_net_price",
         "vat": "diesel_vat", "ebv": "diesel_ebv", "co2": "diesel_co2", "energy": "diesel_energy"
     }
 }
-p_col = col_map[fuel_type]["price"]
-m_col = col_map[fuel_type]["margin"]
-vat_col = col_map[fuel_type]["vat"]
-ebv_col = col_map[fuel_type]["ebv"]
-co2_col = col_map[fuel_type]["co2"]
-energy_col = col_map[fuel_type]["energy"]
+p_col = col_map[fuel_key]["price"]
+m_col = col_map[fuel_key]["margin"]
+vat_col = col_map[fuel_key]["vat"]
+ebv_col = col_map[fuel_key]["ebv"]
+co2_col = col_map[fuel_key]["co2"]
+energy_col = col_map[fuel_key]["energy"]
 
 # Calculate total tax for the "Combined" view
 df["total_tax"] = df[vat_col] + df[ebv_col] + df[co2_col] + df[energy_col]
@@ -260,50 +527,52 @@ delta_marg = disc_marg - pre_disc if not (pre_disc != pre_disc) else 0  # nan-sa
 
 with kpi1:
     st.markdown(f"""<div class='kpi-card'>
-        <div class='kpi-label'>Brent Crude (EUR/L)</div>
+        <div class='kpi-label'>{t('brent')}</div>
         <div class='kpi-value'>€{current_raw:.3f}</div>
-        <div class='kpi-delta up'>Raw Material Cost</div>
+        <div class='kpi-delta up'>{t('raw_material_cost')}</div>
     </div>""", unsafe_allow_html=True)
 
 with kpi2:
     st.markdown(f"""<div class='kpi-card'>
-        <div class='kpi-label'>Pump Price ({fuel_type})</div>
+        <div class='kpi-label'>{t('pump_price')} ({fuel_type})</div>
         <div class='kpi-value'>€{current_pump:.3f}</div>
-        <div class='kpi-delta'>National Average</div>
+        <div class='kpi-delta'>{t('national_avg')}</div>
     </div>""", unsafe_allow_html=True)
 
 with kpi3:
     delta_class = "bad" if current_marg > 0.10 else "down"
     st.markdown(f"""<div class='kpi-card'>
-        <div class='kpi-label'>Corporate Margin</div>
+        <div class='kpi-label'>{t('net_spread')}</div>
         <div class='kpi-value'>€{current_marg:.3f}</div>
-        <div class='kpi-delta {delta_class}'>Net of Taxes &amp; Raw Material</div>
+        <div class='kpi-delta {delta_class}'>{t('spread_kpi_note')}</div>
     </div>""", unsafe_allow_html=True)
 
 with kpi4:
     sign = "+" if delta_marg > 0 else ""
     cls  = "bad" if delta_marg > 0 else "down"
     st.markdown(f"""<div class='kpi-card'>
-        <div class='kpi-label'>Margin Δ During Discount 1</div>
+        <div class='kpi-label'>{t('spread_delta_discount_1')}</div>
         <div class='kpi-value'>{sign}€{delta_marg:.3f}</div>
-        <div class='kpi-delta {cls}'>Pre-discount baseline compared</div>
+        <div class='kpi-delta {cls}'>{t('pre_discount_compared')}</div>
     </div>""", unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ── Tabs ────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4 = st.tabs([
-    "📈  Brent vs Pump",
-    "💰  Corporate Margin",
-    "⏱️  Daily Rhythm",
-    "🗺️  Location Premium",
+    t("tab_brent"),
+    t("tab_spread"),
+    t("tab_rhythm"),
+    t("tab_location"),
 ])
 
 # ── Helper: Add Discount Highlight Bands ─────────────────────────────────────
 def add_discount_bands(fig):
     colors = ["rgba(245,166,35,0.12)", "rgba(59,130,246,0.10)"]
+    visible_min = df["date"].astype(str).min()
+    visible_max = df["date"].astype(str).max()
     for (x0, x1, label), color in zip(DISCOUNT_PERIODS, colors):
-        if x0 >= df["date"].astype(str).min() or x1 <= df["date"].astype(str).max():
+        if x0 <= visible_max and x1 >= visible_min:
             fig.add_vrect(
                 x0=x0, x1=x1, fillcolor=color, opacity=1,
                 layer="below", line_width=1, line_color="rgba(245,166,35,0.3)",
@@ -313,49 +582,275 @@ def add_discount_bands(fig):
             )
     return fig
 
+
+def calculate_tax_break_pass_through(source_df: pl.DataFrame) -> list[dict[str, object]]:
+    """Compare pump-price drops with tax-burden drops for each tax-break window."""
+    max_date = source_df["date"].max()
+    periods = [
+        ("Tankrabatt 1 / 2022", date(2022, 6, 1), date(2022, 8, 31)),
+        ("Tankrabatt 2 / 2026", date(2026, 5, 1), date(2026, 6, 30)),
+    ]
+    analysis_df = source_df.with_columns(
+        (pl.col(vat_col) + pl.col(ebv_col) + pl.col(co2_col) + pl.col(energy_col)).alias("selected_total_tax")
+    )
+    rows = []
+
+    for label, start, planned_end in periods:
+        if start > max_date:
+            continue
+
+        actual_end = min(planned_end, max_date)
+        period_days = (actual_end - start).days + 1
+        pre_start = start - timedelta(days=period_days)
+        pre_end = start - timedelta(days=1)
+
+        pre_df = analysis_df.filter((pl.col("date") >= pre_start) & (pl.col("date") <= pre_end))
+        discount_df = analysis_df.filter((pl.col("date") >= start) & (pl.col("date") <= actual_end))
+        if pre_df.is_empty() or discount_df.is_empty():
+            continue
+
+        pump_drop = pre_df[p_col].mean() - discount_df[p_col].mean()
+        tax_drop = pre_df["selected_total_tax"].mean() - discount_df["selected_total_tax"].mean()
+        spread_change = discount_df[m_col].mean() - pre_df[m_col].mean()
+        raw_change = discount_df["Raw_Material_EUR_per_Liter"].mean() - pre_df["Raw_Material_EUR_per_Liter"].mean()
+        pass_through = (pump_drop / tax_drop) if tax_drop else None
+
+        rows.append({
+            "event": label,
+            "pump_drop": pump_drop,
+            "tax_drop": tax_drop,
+            "spread_change": spread_change,
+            "raw_change": raw_change,
+            "pass_through": pass_through,
+            "window": f"{start:%Y-%m-%d} – {actual_end:%Y-%m-%d}",
+            "baseline": f"{pre_start:%Y-%m-%d} – {pre_end:%Y-%m-%d}",
+        })
+
+    return rows
+
+
+def welch_normal_p_value(before: list[float], after: list[float]) -> tuple[float, float]:
+    """Return difference in means and two-sided normal-approximated Welch p-value."""
+    before = [value for value in before if value is not None]
+    after = [value for value in after if value is not None]
+    if len(before) < 2 or len(after) < 2:
+        return float("nan"), float("nan")
+
+    mean_before = sum(before) / len(before)
+    mean_after = sum(after) / len(after)
+    var_before = sum((value - mean_before) ** 2 for value in before) / (len(before) - 1)
+    var_after = sum((value - mean_after) ** 2 for value in after) / (len(after) - 1)
+    standard_error = sqrt(var_before / len(before) + var_after / len(after))
+    if standard_error == 0:
+        return mean_after - mean_before, 0.0
+
+    z_score = (mean_after - mean_before) / standard_error
+    p_value = erfc(abs(z_score) / sqrt(2.0))
+    return mean_after - mean_before, p_value
+
+
+def evidence_label(p_value: float) -> str:
+    if p_value != p_value:
+        return "n/a"
+    if p_value < 0.01:
+        return t("strong")
+    if p_value < 0.05:
+        return t("moderate")
+    return t("weak")
+
+
+def calculate_switch_event_study(source_df: pl.DataFrame, window_days: int) -> list[dict[str, object]]:
+    """Analyze observable tax-policy switches with symmetric before/after windows."""
+    max_date = source_df["date"].max()
+    min_date = source_df["date"].min()
+    events = [
+        ("tax_break_on_2022", date(2022, 6, 1)),
+        ("tax_break_off_2022", date(2022, 9, 1)),
+        ("tax_break_on_2026", date(2026, 5, 1)),
+    ]
+    analysis_df = source_df.with_columns([
+        (pl.col(vat_col) + pl.col(ebv_col) + pl.col(co2_col) + pl.col(energy_col)).alias("selected_total_tax"),
+        (pl.col(p_col) - pl.col("Raw_Material_EUR_per_Liter")).alias("raw_adjusted_price"),
+    ])
+    rows = []
+
+    for event_key, switch_date in events:
+        if switch_date <= min_date or switch_date > max_date:
+            continue
+
+        before_start = max(min_date, switch_date - timedelta(days=window_days))
+        before_end = switch_date - timedelta(days=1)
+        after_start = switch_date
+        after_end = min(max_date, switch_date + timedelta(days=window_days - 1))
+
+        before_df = analysis_df.filter((pl.col("date") >= before_start) & (pl.col("date") <= before_end))
+        after_df = analysis_df.filter((pl.col("date") >= after_start) & (pl.col("date") <= after_end))
+        if before_df.height < 2 or after_df.height < 2:
+            continue
+
+        pump_change, pump_p = welch_normal_p_value(before_df[p_col].to_list(), after_df[p_col].to_list())
+        raw_adjusted_change, raw_adjusted_p = welch_normal_p_value(
+            before_df["raw_adjusted_price"].to_list(),
+            after_df["raw_adjusted_price"].to_list(),
+        )
+        tax_change = after_df["selected_total_tax"].mean() - before_df["selected_total_tax"].mean()
+        tax_pass_through = pump_change / tax_change if tax_change else None
+
+        rows.append({
+            "event_key": event_key,
+            "before": f"{before_start:%Y-%m-%d} – {before_end:%Y-%m-%d}",
+            "after": f"{after_start:%Y-%m-%d} – {after_end:%Y-%m-%d}",
+            "n_before": before_df.height,
+            "n_after": after_df.height,
+            "pump_change": pump_change,
+            "tax_change": tax_change,
+            "tax_pass_through": tax_pass_through,
+            "raw_adjusted_change": raw_adjusted_change,
+            "pump_p": pump_p,
+            "raw_adjusted_p": raw_adjusted_p,
+        })
+
+    return rows
+
+def get_event_study_timeline(
+    source_df: pl.DataFrame,
+    p_col: str,
+    m_col: str,
+    window_days: int = 60,
+    normalize: bool = True
+) -> pl.DataFrame:
+    """
+    Extracts daily trajectories aligned around major policy switch dates (t=0 = effective date).
+
+    The normalization baseline is computed from the full pre-effective window (Day -window to Day -1).
+    We do NOT use a pinned announcement date because in democratic systems information diffuses
+    gradually over weeks — a single announcement date gives false precision.
+
+    Instead we shade the entire pre-effective window as a 'gradual information zone' and let the
+    actual spread trajectory show whether and when the market started reacting.
+
+    Each event carries an 'event_type' ('tax_cut' or 'tax_hike') because the direction of the
+    pre-event incentive is fundamentally asymmetric:
+      - tax_cut  → stations MIGHT discount early (competitive market share grab)
+      - tax_hike → stations have EVERY incentive to raise prices BEFORE t=0,
+                   so the official restoration appears smaller than it is
+    """
+    # (label, effective_date, event_type)
+    # event_type drives the incentive annotation shown in the chart legend card
+    events = [
+        ("Tankrabatt 1 Start (Jun 2022)", date(2022, 6, 1),  "tax_cut"),
+        ("Tankrabatt 1 End (Sep 2022)",   date(2022, 9, 1),  "tax_hike"),
+        ("Tankrabatt 2 Start (May 2026)", date(2026, 5, 1),  "tax_cut"),
+    ]
+
+    records = []
+    max_date = source_df["date"].max()
+
+    for label, effective_date, event_type in events:
+        if effective_date - timedelta(days=5) > max_date:
+            continue
+
+        start_d = effective_date - timedelta(days=window_days)
+        end_d   = effective_date + timedelta(days=window_days)
+
+        sub_df = source_df.filter((pl.col("date") >= start_d) & (pl.col("date") <= end_d)).sort("date")
+        if sub_df.is_empty():
+            continue
+
+        # Baseline = entire pre-effective window (Day -window to Day -1).
+        # We accept this contains any anticipation moves — the chart trajectory itself
+        # will visually reveal if prices were already trending before t=0.
+        pre_df = sub_df.filter(pl.col("date") < effective_date)
+        baseline_mean_spread = pre_df[m_col].mean() if not pre_df.is_empty() else 0.0
+        baseline_mean_pump   = pre_df[p_col].mean() if not pre_df.is_empty() else 0.0
+
+        for row in sub_df.iter_rows(named=True):
+            rel_day    = (row["date"] - effective_date).days
+            spread_val = row[m_col]
+            pump_val   = row[p_col]
+
+            if normalize:
+                spread_val -= baseline_mean_spread
+                pump_val   -= baseline_mean_pump
+
+            records.append({
+                "Event":              label,
+                "Event Type":         event_type,
+                "Relative Day":       rel_day,
+                "Net Product Spread": spread_val,
+                "Pump Price":         pump_val,
+                "Raw Material Price": row["Raw_Material_EUR_per_Liter"],
+            })
+
+    if not records:
+        return pl.DataFrame(schema={
+            "Event": pl.String, "Event Type": pl.String, "Relative Day": pl.Int64,
+            "Net Product Spread": pl.Float64, "Pump Price": pl.Float64,
+            "Raw Material Price": pl.Float64,
+        })
+
+    return pl.DataFrame(records)
+
 # ──────────────────────────────────────────────────────────────────────────────
 # TAB 1: Brent vs Pump
 # ──────────────────────────────────────────────────────────────────────────────
 with tab1:
     with st.container():
-        st.markdown(f"#### Retail Pump Price vs. Raw Brent Crude — {fuel_type}")
-        st.markdown("<span style='color:#8892A4;font-size:0.85rem;'>The gap between the two lines is where taxes and corporate margins live. Watch what happens to the gap during the discount bands.</span>", unsafe_allow_html=True)
+        st.markdown(f"#### {t('brent_vs_pump_title')} — {fuel_type}")
+        st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('brent_vs_pump_note')}</span>", unsafe_allow_html=True)
 
         fig = go.Figure()
         
         # Base Layer: Brent Crude
         fig.add_trace(go.Scatter(
             x=df["date"], y=df["Raw_Material_EUR_per_Liter"],
-            name="Brent (EUR/L)", 
+            name=t("brent"),
             mode="lines",
-            fill="tozeroy" if tax_viz == "Hide Taxes" else None,
-            fillcolor="rgba(34,197,94,0.08)" if tax_viz == "Hide Taxes" else None,
+            fill="tozeroy" if tax_viz == "hide" else None,
+            fillcolor="rgba(34,197,94,0.08)" if tax_viz == "hide" else None,
             line=dict(color=ACCENT_ALT, width=2),
-            stackgroup="one" if tax_viz != "Hide Taxes" else None
+            stackgroup="one" if tax_viz != "hide" else None
         ))
         
-        if tax_viz == "Total Taxes (Combined)":
+        if tax_viz != "hide":
+            # Add net product spread layer
+            margin_pct = (df[m_col] / df[p_col]) * 100
+            fig.add_trace(go.Scatter(
+                x=df["date"], y=df[m_col],
+                name=t("spread_trace"),
+                mode="lines",
+                line=dict(width=0),
+                fillcolor="rgba(245, 166, 35, 0.6)", # Amber
+                stackgroup="one",
+                hovertemplate=t("spread_hover") + ": €%{y:.3f} (%{customdata:.1f}%)<extra></extra>",
+                customdata=margin_pct
+            ))
+
+        if tax_viz == "combined":
+            tax_pct = (df["total_tax"] / df[p_col]) * 100
             fig.add_trace(go.Scatter(
                 x=df["date"], y=df["total_tax"],
-                name="Total Taxes",
+                name=t("total_taxes"),
                 mode="lines",
                 line=dict(width=0),
                 fillcolor="rgba(100, 116, 139, 0.4)", # Slate-500
                 stackgroup="one",
-                hovertemplate="Total Tax: €%{y:.3f}<extra></extra>"
+                hovertemplate=t("total_taxes") + ": €%{y:.3f} (%{customdata:.1f}%)<extra></extra>",
+                customdata=tax_pct
             ))
             
-        elif tax_viz == "Taxes (Detailed Breakdown)":
+        elif tax_viz == "detailed":
             # Plot in order from bottom to top: EBV -> CO2 -> Energy -> VAT
             # using a cohesive slate/indigo gradient
             tax_layers = [
-                (ebv_col, "EBV Contribution", "rgba(51, 65, 85, 0.6)"),       # Slate-700
-                (co2_col, "CO₂ Pricing", "rgba(71, 85, 105, 0.6)"),            # Slate-600
-                (energy_col, "Energy Tax", "rgba(100, 116, 139, 0.6)"),        # Slate-500
-                (vat_col, "Value Added Tax (VAT)", "rgba(148, 163, 184, 0.6)") # Slate-400
+                (ebv_col, t("ebv"), "rgba(51, 65, 85, 0.6)"),       # Slate-700
+                (co2_col, t("co2"), "rgba(71, 85, 105, 0.6)"),            # Slate-600
+                (energy_col, t("energy_tax"), "rgba(100, 116, 139, 0.6)"),        # Slate-500
+                (vat_col, t("vat"), "rgba(148, 163, 184, 0.6)") # Slate-400
             ]
             
             for col, name, color in tax_layers:
+                layer_pct = (df[col] / df[p_col]) * 100
                 fig.add_trace(go.Scatter(
                     x=df["date"], y=df[col],
                     name=name,
@@ -363,13 +858,14 @@ with tab1:
                     line=dict(width=0),
                     fillcolor=color,
                     stackgroup="one",
-                    hovertemplate=name + ": €%{y:.3f}<extra></extra>"
+                    hovertemplate=name + ": €%{y:.3f} (%{customdata:.1f}%)<extra></extra>",
+                    customdata=layer_pct
                 ))
 
         # Top Layer: Pump Price (Independent line, not stacked)
         fig.add_trace(go.Scatter(
             x=df["date"], y=df[p_col],
-            name=f"Pump Price — {fuel_type}",
+            name=f"{t('pump_price')} — {fuel_type}",
             mode="lines",
             line=dict(color=ACCENT, width=2.5),
         ))
@@ -379,78 +875,341 @@ with tab1:
         # Determine max Y axis to keep charts stable
         max_y = df[p_col].max() * 1.1
         fig.update_layout(**PLOT_LAYOUT, height=480, yaxis_title="€ / Liter", yaxis_range=[0, max_y])
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
         if corr_val != 0.0:
             st.markdown(f"<div style='text-align:right; font-size:0.85rem; color:#8892A4;'>Pearson Correlation (2-day lag): <strong>{corr_val*100:.1f}%</strong></div>", unsafe_allow_html=True)
+            
+        if show_tax_trend:
+            st.markdown(f"#### {t('tax_burden_title')}")
+            st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('tax_burden_note')}</span>", unsafe_allow_html=True)
+            
+            tax_pct_series = (df["total_tax"] / df[p_col]) * 100
+            rolling_avg = tax_pct_series.rolling(window=90, min_periods=1).mean()
+            
+            fig_trend = go.Figure()
+            fig_trend.add_trace(go.Scatter(
+                x=df["date"], y=tax_pct_series,
+                name="Daily Tax %",
+                mode="lines",
+                line=dict(color="rgba(148, 163, 184, 0.3)", width=1),
+            ))
+            fig_trend.add_trace(go.Scatter(
+                x=df["date"], y=rolling_avg,
+                name="90-Day Trend",
+                mode="lines",
+                line=dict(color="#3B82F6", width=3), # Blue
+            ))
+            fig_trend = add_discount_bands(fig_trend)
+            # Add horizontal line for 50%
+            fig_trend.add_hline(y=50, line_dash="dot", line_color=BLUE, line_width=1,
+                   annotation_text=" 50% Threshold", annotation_font_color=BLUE)
+            fig_trend.update_layout(**PLOT_LAYOUT, height=350, yaxis_title=t("tax_percent"), yaxis_ticksuffix="%")
+            st.plotly_chart(fig_trend, width="stretch")
 
 # ──────────────────────────────────────────────────────────────────────────────
-# TAB 2: Corporate Margin
+# TAB 2: Net Product Spread
 # ──────────────────────────────────────────────────────────────────────────────
 with tab2:
-    st.markdown("#### Isolated Corporate Margin Over Time")
-    st.markdown("<span style='color:#8892A4;font-size:0.85rem;'>After stripping VAT, Energy Tax, CO₂, and EBV — what profit per liter does the oil company keep?</span>", unsafe_allow_html=True)
+    st.markdown(f"#### {t('spread_title')}")
+    st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('spread_note')}</span>", unsafe_allow_html=True)
 
     fig2 = go.Figure()
     fig2.add_trace(go.Scatter(
         x=df["date"], y=df[m_col],
-        name="Corporate Margin", fill="tozeroy",
+        name=t("spread_trace"), fill="tozeroy",
         fillcolor="rgba(245,166,35,0.07)",
         line=dict(color=ACCENT, width=2.5),
     ))
     # Baseline reference line
     baseline = df[m_col].mean()
     fig2.add_hline(y=baseline, line_dash="dot", line_color=BLUE, line_width=1,
-                   annotation_text=f" Historical avg: €{baseline:.3f}", annotation_font_color=BLUE)
+                   annotation_text=f" {t('historical_avg')}: €{baseline:.3f}", annotation_font_color=BLUE)
     fig2 = add_discount_bands(fig2)
-    fig2.update_layout(**PLOT_LAYOUT, height=400, yaxis_title="Corporate Margin (€/L)")
-    st.plotly_chart(fig2, use_container_width=True)
+    fig2.update_layout(**PLOT_LAYOUT, height=400, yaxis_title=f"{t('net_spread')} (€/L)")
+    st.plotly_chart(fig2, width="stretch")
 
     # Sub-metrics below chart
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.metric("Pre-Discount Avg", f"€{pre_disc:.4f}")
+        st.metric(t("pre_discount_avg"), f"€{pre_disc:.4f}")
     with c2:
         sign = "+" if delta_marg > 0 else ""
-        st.metric("During Discount 1", f"€{disc_marg:.4f}", f"{sign}€{delta_marg:.4f}", delta_color="inverse")
+        st.metric(t("during_discount_1"), f"€{disc_marg:.4f}", f"{sign}€{delta_marg:.4f}", delta_color="inverse")
     with c3:
-        st.metric("Historical Range", f"€{df['Mock_Corporate_Margin'].min():.3f} – €{df['Mock_Corporate_Margin'].max():.3f}")
+        st.metric(t("historical_range"), f"€{df[m_col].min():.3f} – €{df[m_col].max():.3f}")
+
+    st.markdown(f"#### {t('pass_title')}")
+    st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('pass_note')}</span>", unsafe_allow_html=True)
+
+    pass_rows = calculate_tax_break_pass_through(df_full)
+    if pass_rows:
+        fig_pass = go.Figure()
+        fig_pass.add_trace(go.Bar(
+            x=[row["event"] for row in pass_rows],
+            y=[row["pump_drop"] for row in pass_rows],
+            name=t("pump_drop"),
+            marker_color=BLUE,
+            text=[f"€{row['pump_drop']:.3f}" for row in pass_rows],
+            textposition="outside",
+        ))
+        fig_pass.add_trace(go.Bar(
+            x=[row["event"] for row in pass_rows],
+            y=[row["tax_drop"] for row in pass_rows],
+            name=t("tax_drop"),
+            marker_color=ACCENT,
+            text=[f"€{row['tax_drop']:.3f}" for row in pass_rows],
+            textposition="outside",
+        ))
+        fig_pass.update_layout(
+            **PLOT_LAYOUT,
+            height=360,
+            barmode="group",
+            yaxis_title="€ / Liter",
+        )
+        st.plotly_chart(fig_pass, width="stretch")
+
+        table_rows = []
+        for row in pass_rows:
+            pass_pct = row["pass_through"] * 100 if row["pass_through"] is not None else None
+            table_rows.append({
+                t("event"): row["event"],
+                t("comparison_window"): f"{row['baseline']} vs. {row['window']}",
+                t("pump_drop"): f"€{row['pump_drop']:.3f}/L",
+                t("tax_drop"): f"€{row['tax_drop']:.3f}/L",
+                t("pass_through"): f"{pass_pct:.1f}%" if pass_pct is not None else "n/a",
+                t("spread_change"): f"{row['spread_change']:+.3f}/L",
+                t("raw_change"): f"{row['raw_change']:+.3f}/L",
+            })
+        st.dataframe(table_rows, hide_index=True, width="stretch")
+
+    st.markdown(f"#### {t('event_study_title')}")
+    st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('event_study_note')}</span>", unsafe_allow_html=True)
+
+    # Controls row
+    c_evt, c_win, c_opts = st.columns([2, 2, 1])
+
+    all_event_labels = list(POLICY_MILESTONES.keys())
+    with c_evt:
+        selected_event = st.selectbox(
+            "Select event" if lang == "en" else "Ereignis wählen",
+            options=all_event_labels,
+            index=0,
+        )
+    with c_win:
+        event_window_days = st.slider(
+            t("event_window"),
+            min_value=15, max_value=60, value=45, step=1,
+            help=t("event_window_help"),
+        )
+    with c_opts:
+        normalize_opt   = st.checkbox("Normalized" if lang == "en" else "Normalisiert", value=True,
+                                       help="Subtract pre-event mean so all events start at 0." if lang == "en" else "Subrahiere den Vor-Ereignis-Mittelwert.")
+        show_milestones = st.checkbox("Milestones" if lang == "en" else "Meilensteine", value=True,
+                                       help="Show official legislative dates as vertical markers." if lang == "en" else "Offizielle Gesetzgebungsdaten als Markierungen anzeigen.")
+
+    timeline_data = get_event_study_timeline(
+        df_full, p_col, m_col, window_days=event_window_days, normalize=normalize_opt
+    )
+
+    if not timeline_data.is_empty():
+        timeline_pd = timeline_data.to_pandas()
+
+        # Filter to ONE selected event only — no spaghetti
+        group = timeline_pd[timeline_pd["Event"] == selected_event].copy()
+        event_type = group["Event Type"].iloc[0] if not group.empty else "tax_cut"
+
+        event_colors = {
+            "Tankrabatt 1 Start (Jun 2022)": "#3B82F6",
+            "Tankrabatt 1 End (Sep 2022)":   "#EF4444",
+            "Tankrabatt 2 Start (May 2026)": "#10B981",
+        }
+        color = event_colors.get(selected_event, "#FFFFFF")
+
+        fig_event = go.Figure()
+
+        # Soft background shade: pre-event = information window, post-event = reaction zone
+        fig_event.add_vrect(x0=-event_window_days, x1=0,
+                            fillcolor=color, opacity=0.05, layer="below", line_width=0)
+        fig_event.add_vrect(x0=0, x1=event_window_days,
+                            fillcolor="rgba(255,255,255,0.02)", opacity=1, layer="below", line_width=0)
+
+        # Main trajectory line
+        if not group.empty:
+            hover_fmt = "Day %{x}: €%{y:+.3f}/L<extra></extra>" if normalize_opt else "Day %{x}: €%{y:.3f}/L<extra></extra>"
+            fig_event.add_trace(go.Scatter(
+                x=group["Relative Day"], y=group["Net Product Spread"],
+                name=selected_event, mode="lines",
+                line=dict(color=color, width=3),
+                hovertemplate=hover_fmt
+            ))
+
+        # t=0 line
+        fig_event.add_vline(
+            x=0, line_dash="dash", line_color="rgba(136,146,164,0.75)", line_width=2,
+            annotation_text="Tax change effective →" if lang == "en" else "Steuerchange wirksam →",
+            annotation_position="top right",
+            annotation_font=dict(color="#8892A4", size=10)
+        )
+
+        # Policy milestone vlines for selected event only
+        if show_milestones and selected_event in POLICY_MILESTONES:
+            effective_dates = {
+                "Tankrabatt 1 Start (Jun 2022)": date(2022, 6, 1),
+                "Tankrabatt 1 End (Sep 2022)":   date(2022, 9, 1),
+                "Tankrabatt 2 Start (May 2026)": date(2026, 5, 1),
+            }
+            eff_date = effective_dates[selected_event]
+            for phase_label, milestone_date, phase_color in POLICY_MILESTONES[selected_event]:
+                rel_day = (milestone_date - eff_date).days
+                if rel_day < -event_window_days:
+                    continue
+                fig_event.add_vline(
+                    x=rel_day, line_dash="dot", line_color=phase_color, line_width=1.5,
+                    annotation_text=phase_label,
+                    annotation_position="top left",
+                    annotation_font=dict(color=phase_color, size=9),
+                )
+
+        # Baseline reference
+        if normalize_opt:
+            fig_event.add_hline(y=0.0, line_dash="dot", line_color="rgba(255,255,255,0.1)", line_width=1)
+            yaxis_title = "Spread Δ vs. baseline (€/L)" if lang == "en" else "Spannen-Δ vs. Basislinie (€/L)"
+        else:
+            yaxis_title = "Net Product Spread (€/L)" if lang == "en" else "Netto-Produktspanne (€/L)"
+
+        event_layout = PLOT_LAYOUT | {
+            "height": 400,
+            "xaxis_title": "Days relative to effective date (t=0)" if lang == "en" else "Tage relativ zum Inkrafttreten (t=0)",
+            "yaxis_title": yaxis_title,
+            "showlegend": False,
+        }
+        fig_event.update_layout(**event_layout)
+        st.plotly_chart(fig_event, width="stretch")
+
+        # ── Auto-generated interpretation: compute the numbers, show the verdict ──
+        if not group.empty and normalize_opt:
+            pre_spread  = group[group["Relative Day"] < 0]["Net Product Spread"].mean()
+            post_spread = group[group["Relative Day"] >= 0]["Net Product Spread"].mean()
+            delta       = post_spread - pre_spread
+            direction   = "fell" if delta < 0 else "rose"
+            direction_de = "fiel" if delta < 0 else "stieg"
+
+            if event_type == "tax_cut":
+                # For a discount: did spread rise (retailers kept it) or stay flat/fall (passed through)?
+                if delta > 0.01:
+                    verdict_en = f"The spread **rose** by €{abs(delta):.3f}/L on average after t=0 — retailers widened their margin during the discount, absorbing part of the tax cut."
+                    verdict_de = f"Die Spanne **stieg** nach t=0 im Schnitt um €{abs(delta):.3f}/L — Tankstellen haben einen Teil des Steuerrabatts einbehalten."
+                elif delta < -0.005:
+                    verdict_en = f"The spread **fell** by €{abs(delta):.3f}/L on average after t=0 — the tax cut was passed through to consumers (and then some)."
+                    verdict_de = f"Die Spanne **fiel** nach t=0 im Schnitt um €{abs(delta):.3f}/L — der Steuerrabatt wurde an die Verbraucher weitergegeben."
+                else:
+                    verdict_en = f"The spread was broadly **unchanged** (Δ €{delta:+.3f}/L) — mechanical pass-through only, margins held steady."
+                    verdict_de = f"Die Spanne blieb weitgehend **unverändert** (Δ €{delta:+.3f}/L) — nur mechanische Weitergabe, Margen stabil."
+            else:
+                # For a tax hike: did the spread compress before t=0 (pre-raising)?
+                last_pre_days = group[(group["Relative Day"] >= -7) & (group["Relative Day"] < 0)]["Net Product Spread"].mean()
+                if last_pre_days > 0.01:
+                    verdict_en = f"The spread **rose €{last_pre_days:.3f}/L in the 7 days before t=0** — stations pre-raised prices ahead of the restoration, making the official jump look smaller."
+                    verdict_de = f"Die Spanne **stieg in den 7 Tagen vor t=0 um €{last_pre_days:.3f}/L** — Tankstellen haben Preise vorab erhöht, damit die offizielle Erhöhung kleiner wirkt."
+                else:
+                    verdict_en = f"No significant pre-raising detected. The spread {direction} by €{abs(delta):.3f}/L after the tax restoration at t=0."
+                    verdict_de = f"Keine signifikante Vorhererhöhung erkennbar. Die Spanne {direction_de} nach der Steuerwiederherstellung bei t=0 um €{abs(delta):.3f}/L."
+
+            verdict = verdict_en if lang == "en" else verdict_de
+            icon = "⬆️" if delta > 0 else "⬇️"
+
+            st.markdown(
+                f"<div style='background:rgba(30,41,59,0.4);border-radius:8px;padding:12px 16px;"
+                f"border:1px solid rgba(255,255,255,0.06);margin-top:8px;font-size:0.88rem;color:#C4CAD8;'>"
+                f"{icon} <strong>{selected_event}:</strong> {verdict}</div>",
+                unsafe_allow_html=True
+            )
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TAB 3: Daily Rhythm
 # ──────────────────────────────────────────────────────────────────────────────
 with tab3:
-    st.markdown("#### Average Price by Hour of Day")
-    st.markdown("<span style='color:#8892A4;font-size:0.85rem;'>Oil companies use central pricing algorithms to systematically raise prices during commute hours and cut them at night to attract late-night impulse customers.</span>", unsafe_allow_html=True)
+    st.markdown(f"#### {t('rhythm_title')}")
+    st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('rhythm_note')}</span>", unsafe_allow_html=True)
 
-    intraday = get_intraday_data().to_pandas()
-    min_h  = intraday["Avg_Price_EUR"].min()
-    max_h  = intraday["Avg_Price_EUR"].max()
-    best_h = intraday.loc[intraday["Avg_Price_EUR"].idxmin(), "Hour"]
-    worst_h = intraday.loc[intraday["Avg_Price_EUR"].idxmax(), "Hour"]
+    intraday_df = load_intraday_data()
 
+    if intraday_df is None:
+        st.warning(t("intraday_missing"))
+        st.stop()
+    
+    # Define timeframes using strict Polars filtering
+    timeframes = {
+        "all_time": lambda df: df,
+        "last_7": lambda df: df.filter(pl.col("date") >= (df.select(pl.col("date").max()).item() - timedelta(days=7))),
+        "last_30": lambda df: df.filter(pl.col("date") >= (df.select(pl.col("date").max()).item() - timedelta(days=30))),
+        "discount_2022": lambda df: df.filter((pl.col("date") >= date(2022, 6, 1)) & (pl.col("date") <= date(2022, 8, 31))),
+        "discount_2026": lambda df: df.filter((pl.col("date") >= date(2026, 5, 1)) & (pl.col("date") <= date(2026, 6, 30))),
+        "baseline_2021": lambda df: df.filter(pl.col("date") < date(2022, 1, 1)),
+    }
+    
+    selected_timeframes = st.multiselect(
+        t("compare_timeframes"),
+        options=list(timeframes.keys()),
+        default=["all_time"],
+        format_func=lambda key: t(key),
+    )
+    
     fig3 = go.Figure()
-    fig3.add_trace(go.Scatter(
-        x=intraday["Hour"], y=intraday["Avg_Price_EUR"],
-        name="Avg Price", mode="lines+markers",
-        fill="tozeroy", fillcolor="rgba(59,130,246,0.07)",
-        line=dict(color=BLUE, width=3),
-        marker=dict(size=7, color=BLUE),
-    ))
-    fig3.add_annotation(x=worst_h, y=max_h + 0.005, text=f"⚠️ Peak {worst_h:02d}:00 (€{max_h:.2f})", showarrow=True, arrowhead=2, arrowcolor=DANGER, font=dict(color=DANGER))
-    fig3.add_annotation(x=best_h, y=min_h - 0.01, text=f"✅ Cheapest {best_h:02d}:00 (€{min_h:.2f})", showarrow=True, arrowhead=2, arrowcolor=ACCENT_ALT, font=dict(color=ACCENT_ALT))
-    fig3.update_layout(**PLOT_LAYOUT, height=400, xaxis_title="Hour of Day", yaxis_title="Avg Pump Price (€/L)")
-    fig3.update_xaxes(tickmode="linear", dtick=2, gridcolor="rgba(255,255,255,0.05)")
-    st.plotly_chart(fig3, use_container_width=True)
+    colors = [BLUE, ACCENT, ACCENT_ALT, DANGER, "#A78BFA"]
+    
+    primary_stats = None
+    
+    for i, tf_name in enumerate(selected_timeframes):
+        filtered_df = timeframes[tf_name](intraday_df)
+        if filtered_df.height == 0:
+            continue
+            
+        # Group by hour and calculate mean for the selected fuel type
+        agg_col = col_map[fuel_key]["price"]
+        
+        hourly = filtered_df.group_by("hour").agg([
+            pl.col(agg_col).mean().alias("avg_price")
+        ]).sort("hour").to_pandas()
+        
+        color = colors[i % len(colors)]
+        is_primary = (i == 0)
+        
+        fig3.add_trace(go.Scatter(
+            x=hourly["hour"], y=hourly["avg_price"],
+            name=t(tf_name),
+            mode="lines+markers" if is_primary else "lines",
+            line=dict(color=color, width=3 if is_primary else 2),
+            marker=dict(size=7, color=color) if is_primary else None,
+        ))
+        
+        if primary_stats is None:
+            min_overall = hourly["avg_price"].min()
+            max_overall = hourly["avg_price"].max()
+            best_h_overall = hourly.loc[hourly["avg_price"].idxmin(), "hour"]
+            worst_h_overall = hourly.loc[hourly["avg_price"].idxmax(), "hour"]
+            primary_stats = min_overall, max_overall, best_h_overall, worst_h_overall
 
-    st.info(f"💡 **Best time to fill up:** around {best_h:02d}:00 (saves ~€{(max_h - min_h):.2f}/L vs. the {worst_h:02d}:00 peak). Over 50L that is ~**€{50*(max_h-min_h):.1f}** per tank.")
+    if primary_stats is not None:
+        min_overall, max_overall, best_h_overall, worst_h_overall = primary_stats
+        fig3.add_annotation(x=worst_h_overall, y=max_overall + 0.005, text=f"⚠️ {t('peak')} {worst_h_overall:02d}:00 (€{max_overall:.2f})", showarrow=True, arrowhead=2, arrowcolor=colors[0], font=dict(color=colors[0]))
+        fig3.add_annotation(x=best_h_overall, y=min_overall - 0.01, text=f"✅ {t('lowest')} {best_h_overall:02d}:00 (€{min_overall:.2f})", showarrow=True, arrowhead=2, arrowcolor=colors[0], font=dict(color=colors[0]))
+
+    fig3.update_layout(**PLOT_LAYOUT, height=400, xaxis_title=t("hour_of_day"), yaxis_title=t("avg_pump_price"))
+    fig3.update_xaxes(tickmode="linear", dtick=2, gridcolor="rgba(255,255,255,0.05)")
+    st.plotly_chart(fig3, width="stretch")
+
+    if primary_stats is not None:
+        st.info(f"💡 **{t('lowest_info')}:** {best_h_overall:02d}:00 (≈€{(max_overall - min_overall):.2f}/L {t('below_peak')} {worst_h_overall:02d}:00). {t('per_tank')} ~**€{50*(max_overall-min_overall):.1f}**.")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TAB 4: Location Premium
 # ──────────────────────────────────────────────────────────────────────────────
 with tab4:
-    st.markdown("#### Price Premium by Station Location Type")
-    st.markdown("<span style='color:#8892A4;font-size:0.85rem;'>Autobahn stations exploit captive motorists with no alternative. Rural and suburban stations compete more aggressively.</span>", unsafe_allow_html=True)
+    st.markdown(f"#### {t('location_title')}")
+    st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('location_note')}</span>", unsafe_allow_html=True)
 
     geo = get_geo_data().to_pandas()
     fig4 = go.Figure(go.Bar(
@@ -464,14 +1223,14 @@ with tab4:
     cheapest = geo["Avg_Price"].min()
     fig4.add_hline(y=cheapest, line_dash="dot", line_color=ACCENT_ALT, line_width=1,
                    annotation_text=f" Rural baseline: €{cheapest:.2f}", annotation_font_color=ACCENT_ALT)
-    fig4.update_layout(**PLOT_LAYOUT, height=380, yaxis_title="Avg Price (€/L)", showlegend=False)
+    fig4.update_layout(**PLOT_LAYOUT, height=380, yaxis_title=t("avg_pump_price"), showlegend=False)
     fig4.update_yaxes(range=[1.65, 2.25], gridcolor="rgba(255,255,255,0.05)")
-    st.plotly_chart(fig4, use_container_width=True)
+    st.plotly_chart(fig4, width="stretch")
 
     c1, c2 = st.columns(2)
     autobahn = geo.loc[geo["Location"] == "Autobahn", "Avg_Price"].values[0]
     rural    = geo.loc[geo["Location"] == "Rural",    "Avg_Price"].values[0]
     with c1:
-        st.metric("Autobahn Premium vs Rural", f"+€{(autobahn - rural):.2f}/L", f"+{((autobahn/rural - 1)*100):.1f}%", delta_color="inverse")
+        st.metric(t("autobahn_premium"), f"+€{(autobahn - rural):.2f}/L", f"+{((autobahn/rural - 1)*100):.1f}%", delta_color="inverse")
     with c2:
-        st.metric("Cost per 50L Tank (Autobahn vs Rural)", f"€{50*(autobahn - rural):.1f} extra", "Captive demand pricing")
+        st.metric(t("tank_extra"), f"€{50*(autobahn - rural):.1f} extra", t("captive_pricing"))

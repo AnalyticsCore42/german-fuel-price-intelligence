@@ -1,41 +1,43 @@
 Project Plan
-You can save this directly as project_plan.md to guide the entire lifecycle of your analysis.
-Subject to changes, last change at: 11:50am 11.05.2026
+Last updated: 2026-05-21
 
-1. Phase 1: Project Setup & Documentation
-1.1. Initialize Repository: Create the project folder structure (e.g., /data, /docs, /scripts, /ui).
-1.2. Document Constants: Save the tax and duty parameters as taxes_and_duties_history.md in the /docs folder.
-1.3. Define Scope: Finalize this project plan and place it in the root directory.
-2. Phase 2: Data Collection & Validation
-2.1. Fuel Station Prices (Intraday Data):
-Download historical CSV dumps from Tankerkönig / MTS-K.
-Target scope: Minimum 2021 to 2026 (focusing heavily on May-Sep 2022 and May-Jun 2026).
-2.2. Commodity & Benchmark Data (Daily Data):
-Download ICE Dated Brent Crude Oil prices (USD/Barrel).
-Download EUR/USD exchange rate historical data.
-(Optional but recommended) Download Crack Spreads (Refinery margins) if available.
-2.3. Data Validation & Integrity Checks:
-Check for missing values (NaNs) or extreme outliers in fuel prices (e.g., stations reporting 9.99€/liter due to errors).
-Ensure Timezone consistency (Fuel prices are usually in Europe/Berlin local time, while oil benchmarks might be in UTC/EST).
-Verify that all required datasets overlap correctly in the timeline.
-3. Phase 3: Data Processing & Internal Analysis (Scripting)
-3.1. ETL Pipeline (Extract, Transform, Load):
-Write a script to convert oil prices from USD/Barrel to EUR/Liter.
-Merge the daily oil/currency data with the minute/hourly fuel station data using the timestamp.
-3.2. Tax Deduction Script (Net Margin Calculation):
-Implement the logic from the taxes_and_duties_history.md matrix.
-Calculate: Gross Price -> subtract VAT -> subtract Energy Tax, CO2, EBV -> equals Net Product Price.
-Calculate: Net Product Price - EUR Brent Price = Corporate Margin.
-3.3. Intraday Pattern Script (The 12:00 PM Hike):
-Group the data by hour and minute.
-Generate internal visual plots (e.g., using Matplotlib/Seaborn) to prove the systematic price hikes at specific times (like 12:00 PM).
-3.4. Excess Profit Script (The Fuel Discount Analysis):
-Compare the Corporate Margin before, during, and after the 2022 and 2026 fuel discounts.
-Generate internal plots to see if the margin spiked exactly when the tax dropped.
-4. Phase 4: Final Visualization & Modern UI
-4.1. Select UI Framework: Choose a modern, interactive framework (e.g., Python-based like Streamlit or Dash, or a JS-based frontend like Next.js with Recharts/Plotly).
-4.2. Build Interactive Dashboards:
-View 1 (The Discount): A timeline chart showing the gross price vs. net price vs. oil price, with highlighted background areas for the discount periods.
-View 2 (The Daily Rhythm): An interactive heat map or line chart showing average prices by time of day, allowing the user to filter by year or month.
-View 3 (The Margin): A clear, isolated chart showing the exact profit margin of the oil companies over time.
-4.3. Polish & Deploy: Add tooltips explaining the taxes to the end-user, ensure mobile responsiveness, and deploy the app (e.g., via Vercel, Heroku, or Streamlit Cloud).
+## Phase 1: Project Setup & Documentation ✅
+- [x] Initialize repository and folder structure (`/data`, `/docs`, `/scripts`, `/scripts/validation`, `/ui`)
+- [x] Document tax constants: `docs/taxes_and_duties_history.md`
+- [x] Document policy timeline: `docs/policy_timeline_tankrabatt.md` (legislative milestone dates for both Tankrabatte)
+- [x] Define and maintain this project plan
+
+## Phase 2: Data Collection & Validation ✅
+- [x] Fuel station prices (intraday): historical CSV dumps from Tankerkönig/MTS-K, 2021–2026
+- [x] Brent Crude Oil prices: seed baseline from EIA (`data/seed_bulk_baseline_brent_crude.csv`), live updates via Yahoo Finance JSON API
+- [x] EUR/USD exchange rate: seed baseline from ECB (`data/seed_bulk_baseline_eur_usd.csv`), live updates via Yahoo Finance JSON API
+- [x] Data validation scripts in `scripts/validation/`:
+  - `01_validate_macro_data.py` — checks Brent/FX data integrity
+  - `02_analyze_raw_data.py` — raw pump price sanity checks
+  - `03_analyze_stations.py` — station-level coverage checks
+  - `04_price_trend_analysis.py` — price trend validation
+
+## Phase 3: Data Processing & ETL ✅
+- [x] `scripts/01_update_brent_crude.py` — incremental live update of Brent + EUR/USD, writes `data/processed_macro_baseline.parquet`
+- [x] `scripts/02_tax_engine.py` — vectorized tax deduction engine (VAT, Energy Tax, CO2, EBV), handles all historical rate changes including both Tankrabatte
+- [x] `scripts/03_download_pump_prices.py` — Tankerkönig intraday data ingestion
+- [x] `scripts/04_build_dashboard_dataset.py` — joins macro + pump prices, applies tax engine, outputs:
+  - `data/processed_daily_margins.parquet` (national daily averages + net product spreads)
+  - `data/processed_intraday.parquet` (intraday patterns for daily rhythm analysis)
+
+## Phase 4: Dashboard & Visualization ✅ (ongoing)
+- [x] Streamlit dashboard (`ui/04_app.py`) with English/German language toggle
+- [x] Tab 1: Brent vs. Pump — raw material cost vs. pump price with tax breakdown overlay
+- [x] Tab 2: Net Product Spread — margin analysis with:
+  - [x] Fuel Tax Break Pass-Through bar chart and table
+  - [x] Event Study Timeline Chart (single-event selectbox, ±45d window, normalized/absolute toggle)
+  - [x] Policy milestone markers from official legislative dates
+  - [x] Auto-generated data-driven verdict per event
+- [x] Tab 3: Daily Rhythm — intraday price patterns by time of day
+- [x] `start_dashboard.py` — IDE-runnable Python launcher for Streamlit server
+
+## Phase 5: Planned / Future
+- [ ] Fix event study post-event average window (currently uses full slider window; should cap at 14 days for the verdict)
+- [ ] pytest suite for `scripts/02_tax_engine.py` — boundary tests for tax-break dates
+- [ ] RAG pipeline evaluation — text-to-SQL over the parquet files via DuckDB + LLM tool-calling, to enable natural language queries on price/margin data
+- [ ] Deploy to Streamlit Cloud or self-hosted server

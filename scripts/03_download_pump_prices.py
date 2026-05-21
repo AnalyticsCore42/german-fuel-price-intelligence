@@ -127,6 +127,7 @@ def download_prices(session: requests.Session, base_url: str):
     skipped = 0
     failed = 0
     failed_dates = []
+    last_successful_date = None
 
     print(f"\nDownloading prices: {current} → {end} ({total_days} days)")
     print("=" * 60)
@@ -139,8 +140,12 @@ def download_prices(session: requests.Session, base_url: str):
         day_num = (current - START_DATE).days + 1
 
         # Skip if already downloaded (idempotent!)
-        if output_path.exists():
+        # Crucial safety feature: always redownload/overwrite the last 2 days
+        # to ensure we don't get incomplete partial days or lag-delayed prices!
+        is_recent = current >= (end - timedelta(days=2))
+        if output_path.exists() and not is_recent:
             skipped += 1
+            last_successful_date = current
             current += timedelta(days=1)
             continue
 
@@ -163,6 +168,7 @@ def download_prices(session: requests.Session, base_url: str):
 
             size_kb = output_path.stat().st_size / 1024
             downloaded += 1
+            last_successful_date = current
             print(f"  {progress} {current} — ✓ {df.height:,} rows, {size_kb:.0f} KB")
 
         except Exception as e:
@@ -175,7 +181,20 @@ def download_prices(session: requests.Session, base_url: str):
     print("\n" + "=" * 60)
     print(f"Done! Downloaded: {downloaded}, Skipped (already had): {skipped}, Failed: {failed}")
     if failed_dates:
-        print(f"Failed dates: {', '.join(failed_dates)}")
+        print(f"Failed dates (No data available yet): {', '.join(failed_dates)}")
+
+    today = date.today()
+    if last_successful_date:
+        delay_days = (today - last_successful_date).days
+        print(f"\n📊 DATA FRESHNESS REPORT:")
+        print(f"Current System Date:  {today}")
+        print(f"Last Available Data:  {last_successful_date}")
+        if delay_days == 0:
+            print("Status: Up to date (No delay!)")
+        else:
+            print(f"Status: Data source is {delay_days} day(s) behind the current date.")
+    else:
+        print("No successful downloads found.")
 
 
 # ==========================================
