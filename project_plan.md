@@ -42,6 +42,7 @@ Last updated: 2026-05-21
 2. Brand analysis — compare margins and pricing behavior across gas station brands (Shell, Aral, Jet, etc.) in general and specifically during the Tankrabatt periods
 3. RAG pipeline evaluation — text-to-SQL over the parquet files via DuckDB + LLM tool-calling, to enable natural language queries on price/margin data
 4. Deploy to Streamlit Cloud or self-hosted server
+5. Write the rest of the tests (Low Priority)
 
 ## Test Coverage
 
