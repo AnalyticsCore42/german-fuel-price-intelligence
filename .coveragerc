@@ -1,0 +1,5 @@
+[run]
+source = scripts
+omit =
+    scripts/03_download_pump_prices.py
+    scripts/validation/*

@@ -43,16 +43,12 @@ Last updated: 2026-05-21
 3. RAG pipeline evaluation — text-to-SQL over the parquet files via DuckDB + LLM tool-calling, to enable natural language queries on price/margin data
 4. Deploy to Streamlit Cloud or self-hosted server
 
-## Test Coverage Tracker
+## Test Coverage
 
-| Module | Function | Tested? | Test File | Notes |
-|--------|----------|---------|-----------|-------|
-| `02_tax_engine.py` | `calculate_net_price()` | ✅ 56 tests | `test_tax_engine.py` | VAT, Energy Tax, CO2, EBV, boundaries, end-to-end math |
-| `04_build_dashboard_dataset.py` | `valid_price()` | ❌ | — | Outlier filter, medium risk |
-| `04_build_dashboard_dataset.py` | `build_hourly_snapshot()` | ❌ | — | State tracking, medium risk |
-| `04_build_dashboard_dataset.py` | `summarize_daily()` | ❌ | — | Aggregation logic |
-| `04_build_dashboard_dataset.py` | `add_tax_and_spread_columns()` | ❌ | — | Wraps tax engine, lower risk |
-| `ui/04_app.py` | `calculate_tax_break_pass_through()` | ❌ | — | Pass-through math, medium risk |
-| `ui/04_app.py` | `get_event_study_timeline()` | ❌ | — | Event study window logic |
-| `01_update_brent_crude.py` | `fetch_yahoo_data()` | ❌ | — | IO/network — low priority |
-| `01_update_brent_crude.py` | `update_macro_data()` | ❌ | — | IO/orchestration — low priority |
+Coverage is tracked automatically via `pytest-cov`. Every `pytest` run prints a per-file report:
+
+```
+pytest tests/ -v
+```
+
+Config: `pytest.ini` + `.coveragerc` (omits IO-only scripts and validation scripts).
