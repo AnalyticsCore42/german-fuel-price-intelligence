@@ -13,31 +13,58 @@ def clean_station_data(input_path: str, output_path: str):
         .replace("", "UNKNOWN")
     )
 
-    # 2. Define the Corporate Mapping (The verified Ground Truth!)
-    # We map specific brands to their overarching corporate umbrellas.
+    # 2. The Comprehensive Corporate Mapping (The Verified Ground Truth)
     mapping = {
+        # Tier 1: Big Oil & Global Conglomerates
         "ARAL": "BP (Aral)",
         "SHELL": "Shell",
-        "ESSO": "EG Group (Esso)",
         "TOTALENERGIES": "Couche-Tard (Total)",
         "TOTAL": "Couche-Tard (Total)",
         "ELAN": "Couche-Tard (Total)",
         "ACCESS": "Couche-Tard (Total)",
-        "JET": "Stonepeak (JET)",
         "AGIP ENI": "Eni",
         "AGIP": "Eni",
-        "STAR": "Orlen",
-        "ORLEN": "Orlen",
-        "WESTFALEN": "Westfalen AG",
-        "MARKANT": "Westfalen AG",
-        "HEM": "Oilinvest (HEM/Tamoil)",
-        "T": "Oilinvest (HEM/Tamoil)",
+        "STAR": "Orlen (Polish State)",
+        "ORLEN": "Orlen (Polish State)",
+
+        # Tier 2: Private Equity & Acquisitions
+        "JET": "Stonepeak (JET)",
+        "ESSO": "EG Group (Esso)",
         "OIL!": "Prax Group",
+
+        # Tier 3: The "Mittelstand" Consolidations (Mid-Sized Independents)
         "HOYER": "Hoyer Group",
         "SPRINT": "Hoyer Group",
+        "WESTFALEN": "Westfalen AG",
+        "MARKANT": "Westfalen AG",
+        "CLASSIC": "Christian Lühmann GmbH",
+        "NORDOEL": "Lother GmbH",
+        "Q1": "Q1 Energie AG",
+        "TEAM": "team energie GmbH",
+        "PM": "PM Pfennings",
+        "SCORE": "SCORE GmbH",
+        "ED": "Erich Doetsch (ED)",
+
+        # Tier 4: International Niche Holdings
+        "HEM": "Oilinvest (HEM/Tamoil)",
+        "T": "Oilinvest (HEM/Tamoil)",
+        "CALPAM": "Bolloré Group",
+        "GULF": "Gulf / Independent",
+
+        # Tier 5: Cooperatives & Associations
+        "BFT (FREIE)": "BFT (Independent Assoc.)",
+        "BFT": "BFT (Independent Assoc.)",
+        "FREI": "BFT (Independent Assoc.)",
+        "FREIE": "BFT (Independent Assoc.)",
+        "AVIA": "AVIA Cooperative",
+        "RAIFFEISEN": "Agricultural Co-ops (Raiffeisen/BayWa)",
+        "BAYWA": "Agricultural Co-ops (Raiffeisen/BayWa)",
+
+        # Tier 6: Generics & Supermarkets
         "SB": "SB (Generic/Discount)",
         "SUPERMARKT": "Grocery Retailers",
-        "TANKCENTER": "Grocery Retailers"
+        "TANKCENTER": "Grocery Retailers",
+        "UNKNOWN": "Unknown"
     }
 
     # Create a Polars DataFrame from the mapping
@@ -47,16 +74,19 @@ def clean_station_data(input_path: str, output_path: str):
     })
 
     # 3. Join the Corporate Group onto the main dataset
-    # If a brand isn't in our mapping, it defaults to "Independent / Mittelstand"
+    # If a brand isn't in our mapping, it truly belongs in the long-tail Independent bucket
     df_cleaned = df.join(mapping_df, on="brand", how="left").with_columns(
-        pl.col("corporate_group").fill_null("Independent / Mittelstand")
+        pl.col("corporate_group").fill_null("Independent / Small Operator")
     )
 
     # 4. Save the "Gold" dataset
     df_cleaned.write_parquet(output_path)
     print(f"✅ Cleaned dataset saved to {output_path}!")
+    
+    # 5. Print the new distribution to verify the fix!
     print("\nCorporate Group Distribution:")
-    print(df_cleaned.group_by("corporate_group").len().sort("len", descending=True))
+    distribution = df_cleaned.group_by("corporate_group").len().sort("len", descending=True)
+    print(distribution)
 
 if __name__ == "__main__":
     clean_station_data(
