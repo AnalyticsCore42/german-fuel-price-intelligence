@@ -18,6 +18,7 @@ from pathlib import Path
 # Resolve data path relative to this script file — works from any working directory
 DATA_DIR = Path(__file__).parent.parent / "data"
 INTRADAY_FILE = DATA_DIR / "processed_intraday.parquet"
+BRAND_DAILY_FILE = DATA_DIR / "processed_brand_daily_margins.parquet"
 
 # ==========================================
 # 1. SETUP & CONFIGURATION
@@ -130,6 +131,7 @@ DISCOUNT_PERIODS = [
     ("2022-06-01", "2022-08-31", "1st Fuel Discount (Tankrabatt 1)"),
     ("2026-05-01", "2026-06-30", "2nd Fuel Discount (Tankrabatt 2)"),
 ]
+STABLE_MARGIN_BASELINE_DAYS = 365
 
 # Official legislative milestones per event, sourced from docs/policy_timeline_tankrabatt.md
 # Each tuple: (phase_label, relative_day_from_effective, color)
@@ -177,11 +179,12 @@ TRANSLATIONS = {
         "national_avg": "National Average",
         "net_spread": "Net Product Spread",
         "spread_delta_discount_1": "Spread Δ During Discount 1",
-        "pre_discount_compared": "Pre-discount baseline compared",
+        "pre_discount_compared": "365-day pre-tax baseline compared",
         "spread_kpi_note": "After taxes, before refining/retail costs",
         "tab_brent": "📈  Brent vs Pump",
         "tab_spread": "💰  Net Product Spread",
         "tab_rhythm": "⏱️  Daily Rhythm",
+        "tab_brand": "🏷️  Brand Comparison",
         "tab_location": "🗺️  Location Premium",
         "brent_vs_pump_title": "Retail Pump Price vs. Raw Brent Crude",
         "brent_vs_pump_note": "The gap between the two lines contains taxes plus the net product spread over Brent. That spread still includes refining, logistics, retail operations, overhead, and profit.",
@@ -192,13 +195,27 @@ TRANSLATIONS = {
         "energy_tax": "Energy Tax",
         "co2": "CO₂ Pricing",
         "ebv": "EBV Contribution",
+        "spread_baseline_mode": "Spread Baseline Mode",
+        "brent_baseline": "Brent Crude (Total Spread over Crude)",
+        "refined_baseline": "Refined Fuel (Pure Retail Margin)",
+        "refining_layer": "Refining Margin (Crack Spread)",
+        "refining_trace": "Refining Crack Spread",
+        "retail_trace": "Net Retail Spread",
+        "retail_spread_title": "Isolated Net Retail Spread Over Time",
+        "retail_spread_note": "After stripping VAT, Energy Tax, CO₂, EBV, and the wholesale refined product price (including refining crack spreads), this is the pure retail and distribution spread. It contains local transport, station operating costs, marketing, and station brand profits.",
         "tax_burden_title": "Tax Burden Trendline",
+        "procurement_smoothing": "Procurement Smoothing (Lag)",
+        "procurement_smoothing_help": "Smooth raw Brent and product prices using a rolling average to simulate refinery/retail inventory contracts and prevent daily spot spikes.",
+        "smooth_daily": "Daily Spot (No Smoothing)",
+        "smooth_weekly": "7-Day Rolling Average",
+        "smooth_biweekly": "14-Day Rolling Average (Standard)",
+        "smooth_monthly": "30-Day Rolling Average (Hedged)",
         "tax_burden_note": "Percentage of pump price comprised of taxes (VAT, Energy Tax, CO₂, EBV), smoothed over 90 days.",
         "tax_percent": "Taxes (% of Pump Price)",
         "spread_title": "Isolated Net Product Spread Over Time",
         "spread_note": "After stripping VAT, Energy Tax, CO₂, and EBV, this is the pump-price spread over Brent crude. It is not profit; it still contains refining, transport, retail costs, overhead, and profit.",
         "historical_avg": "Historical avg",
-        "pre_discount_avg": "Pre-Discount Avg",
+        "pre_discount_avg": "365-Day Pre-Tax Avg",
         "during_discount_1": "During Discount 1",
         "historical_range": "Historical Range",
         "pass_title": "Fuel Tax Break Pass-Through",
@@ -210,6 +227,7 @@ TRANSLATIONS = {
         "raw_change": "Brent change",
         "pass_through": "Pass-through",
         "comparison_window": "Comparison window",
+        "spread_baseline": "Spread baseline",
         "event_study_title": "Event Study: Margins Trajectory Around Policy Shocks",
         "event_study_note": "A dynamic Event Study mapping the daily trajectories of the Net Product Spread from Day -60 to Day +60 around each policy shock. Normalizing relative to the pre-event baseline isolates clean margins behavior.",
         "event_window": "Timeline window (days before/after)",
@@ -246,6 +264,26 @@ TRANSLATIONS = {
         "lowest_info": "Lowest hourly average (primary trend)",
         "below_peak": "below the peak",
         "per_tank": "Over 50L that is",
+        "brand_title": "Brand and Ownership Margin Comparison",
+        "brand_note": "Switch between customer-facing brand names and ownership groups. Brand-name view keeps all brands with at least 50 stations separate and rolls smaller brands into one Other bucket.",
+        "brand_data_missing": "Brand analysis data is not generated yet. Run `python3 scripts/04_build_dashboard_dataset.py` once to create `data/processed_brand_daily_margins.parquet`.",
+        "brand_level": "Comparison level",
+        "brand_level_brand": "Brand names (50+ stations)",
+        "brand_level_owner": "Ownership groups",
+        "brand_groups": "Groups to compare",
+        "brand_groups_help": "Defaults to the largest groups by station count. Add discount or premium child brands here to compare them directly.",
+        "policy_window": "Policy window",
+        "tankrabatt_1": "Tankrabatt 1 / 2022",
+        "tankrabatt_2": "Tankrabatt 2 / 2026",
+        "brand_margin_trend": "Net product spread by group",
+        "brand_delta_title": "Margin change during tax break vs. 365-day pre-tax baseline",
+        "brand_delta_note": "Positive values mean the group’s net product spread was higher during the tax break than its own year-long pre-event baseline.",
+        "group": "Group",
+        "stations": "Stations",
+        "baseline_margin": "Baseline margin",
+        "discount_margin": "Tax-break margin",
+        "delta_margin": "Margin delta",
+        "discount_price": "Tax-break pump price",
         "location_title": "Price Premium by Station Location Type",
         "location_note": "Autobahn stations exploit captive motorists with no alternative. Rural and suburban stations compete more aggressively.",
         "autobahn_premium": "Autobahn Premium vs Rural",
@@ -275,11 +313,12 @@ TRANSLATIONS = {
         "national_avg": "Bundesweiter Durchschnitt",
         "net_spread": "Netto-Produktspanne",
         "spread_delta_discount_1": "Spannenänderung im Tankrabatt 1",
-        "pre_discount_compared": "Vergleich mit Vor-Tankrabatt-Zeitraum",
+        "pre_discount_compared": "Vergleich mit 365-Tage-Basis vor Steueränderung",
         "spread_kpi_note": "Nach Steuern, vor Raffinerie-/Handelskosten",
         "tab_brent": "📈  Brent vs. Zapfsäule",
         "tab_spread": "💰  Netto-Produktspanne",
         "tab_rhythm": "⏱️  Tagesrhythmus",
+        "tab_brand": "🏷️  Markenvergleich",
         "tab_location": "🗺️  Standortaufschlag",
         "brent_vs_pump_title": "Zapfsäulenpreis vs. Brent-Rohöl",
         "brent_vs_pump_note": "Die Lücke zwischen den Linien enthält Steuern plus Netto-Produktspanne über Brent. Diese Spanne enthält weiterhin Raffinerie, Logistik, Stationsbetrieb, Gemeinkosten und Gewinn.",
@@ -290,13 +329,27 @@ TRANSLATIONS = {
         "energy_tax": "Energiesteuer",
         "co2": "CO₂-Preis",
         "ebv": "EBV-Beitrag",
+        "spread_baseline_mode": "Spannen-Basislinie",
+        "brent_baseline": "Brent-Rohöl (Gesamtspanne über Rohöl)",
+        "refined_baseline": "Raffiniertes Produkt (Reine Retailmarge)",
+        "refining_layer": "Raffineriemarge (Crack-Spread)",
+        "refining_trace": "Raffinerie-Crack-Spread",
+        "retail_trace": "Netto-Retailspanne",
+        "retail_spread_title": "Isolierte Netto-Retailspanne im Zeitverlauf",
+        "retail_spread_note": "Nach Abzug von MwSt., Energiesteuer, CO₂, EBV und dem Großhandels-Einkaufspreis (inkl. Raffinerie-Crack-Spannen) bleibt die reine Vertriebs- und Tankstellen-Marge. Sie enthält den lokalen Transport, Stations-Betriebskosten, Marketing und Gewinne der Tankstellen-Marken.",
         "tax_burden_title": "Entwicklung der Steuerbelastung",
+        "procurement_smoothing": "Beschaffungs-Glättung (Lag)",
+        "procurement_smoothing_help": "Glättet Brent- und Produktpreise mit einem gleitenden Durchschnitt, um Einkaufsverträge und Lagerbestände zu simulieren und tägliche Spotpreis-Spitzen zu dämpfen.",
+        "smooth_daily": "Täglicher Spotpreis (Keine Glättung)",
+        "smooth_weekly": "7-Tage gleitender Durchschnitt",
+        "smooth_biweekly": "14-Tage gleitender Durchschnitt (Standard)",
+        "smooth_monthly": "30-Tage gleitender Durchschnitt (Gesichert)",
         "tax_burden_note": "Anteil des Zapfsäulenpreises, der aus Steuern besteht (MwSt., Energiesteuer, CO₂, EBV), geglättet über 90 Tage.",
         "tax_percent": "Steuern (% des Zapfsäulenpreises)",
         "spread_title": "Isolierte Netto-Produktspanne im Zeitverlauf",
         "spread_note": "Nach Abzug von MwSt., Energiesteuer, CO₂ und EBV bleibt die Spanne des Zapfsäulenpreises über Brent. Das ist kein Gewinn; enthalten sind weiterhin Raffinerie, Transport, Stationsbetrieb, Gemeinkosten und Gewinn.",
         "historical_avg": "Historischer Durchschnitt",
-        "pre_discount_avg": "Vor-Tankrabatt-Durchschnitt",
+        "pre_discount_avg": "365-Tage-Durchschnitt vor Steueränderung",
         "during_discount_1": "Während Tankrabatt 1",
         "historical_range": "Historische Spanne",
         "pass_title": "Weitergabe des Tankrabatts",
@@ -308,6 +361,7 @@ TRANSLATIONS = {
         "raw_change": "Brent-Änderung",
         "pass_through": "Weitergabe",
         "comparison_window": "Vergleichszeitraum",
+        "spread_baseline": "Spannen-Basislinie",
         "event_study_title": "Ereignisstudie: Verlauf der Margen um Steuerschocks",
         "event_study_note": "Eine dynamische Ereignisstudie, die den täglichen Verlauf der Netto-Produktspanne von Tag -60 bis Tag +60 um jeden politischen Steuerschock abbildet. Die Normalisierung relativ zur Vor-Ereignis-Basislinie isoliert das saubere Spannenverhalten.",
         "event_window": "Zeitfenster (Tage davor/danach)",
@@ -344,6 +398,26 @@ TRANSLATIONS = {
         "lowest_info": "Niedrigster Stundendurchschnitt (primäre Linie)",
         "below_peak": "unter dem Hochpunkt",
         "per_tank": "Bei 50L entspricht das",
+        "brand_title": "Vergleich nach Marke und Eigentümergruppe",
+        "brand_note": "Wechsle zwischen kundenseitigen Markennamen und Eigentümergruppen. Die Markenansicht hält alle Marken mit mindestens 50 Stationen getrennt und bündelt kleinere Marken in einem Sonstige-Topf.",
+        "brand_data_missing": "Die Markenvergleich-Daten wurden noch nicht erzeugt. Führe einmal `python3 scripts/04_build_dashboard_dataset.py` aus, um `data/processed_brand_daily_margins.parquet` zu erstellen.",
+        "brand_level": "Vergleichsebene",
+        "brand_level_brand": "Markennamen (50+ Stationen)",
+        "brand_level_owner": "Eigentümergruppen",
+        "brand_groups": "Gruppen vergleichen",
+        "brand_groups_help": "Standardmäßig werden die größten Gruppen nach Stationszahl gewählt. Füge Discount- oder Premiummarken hinzu, um sie direkt zu vergleichen.",
+        "policy_window": "Politikfenster",
+        "tankrabatt_1": "Tankrabatt 1 / 2022",
+        "tankrabatt_2": "Tankrabatt 2 / 2026",
+        "brand_margin_trend": "Netto-Produktspanne nach Gruppe",
+        "brand_delta_title": "Spannenänderung im Tankrabatt vs. 365-Tage-Basis vor Steueränderung",
+        "brand_delta_note": "Positive Werte bedeuten, dass die Netto-Produktspanne der Gruppe während des Tankrabatts höher war als ihre eigene einjährige Vor-Ereignis-Basislinie.",
+        "group": "Gruppe",
+        "stations": "Stationen",
+        "baseline_margin": "Basis-Spanne",
+        "discount_margin": "Tankrabatt-Spanne",
+        "delta_margin": "Spannen-Delta",
+        "discount_price": "Tankrabatt-Zapfsäulenpreis",
         "location_title": "Preisaufschlag nach Standorttyp",
         "location_note": "Autobahnstationen bedienen gebundene Nachfrage mit weniger Alternativen. Ländliche und suburbane Stationen stehen stärker im Wettbewerb.",
         "autobahn_premium": "Autobahnaufschlag vs. ländlich",
@@ -367,12 +441,31 @@ def detect_default_language() -> str:
 # ==========================================
 
 @st.cache_data(show_spinner="Loading aggregated spreads + taxes…")
-def load_data(start_date: date = date(2021, 1, 1)):
+def load_data(start_date: date = date(2021, 1, 1), smoothing_days: int = 1):
     """
     Loads the real aggregated daily spreads (Tankerkönig + Macro).
     """
     df = pl.read_parquet(DATA_DIR / "processed_daily_margins.parquet")
     df = df.filter(pl.col("date") >= start_date)
+    if smoothing_days > 1:
+        df = df.sort("date").with_columns([
+            pl.col("Raw_Material_EUR_per_Liter").rolling_mean(window_size=smoothing_days, min_periods=1).alias("Raw_Material_EUR_per_Liter"),
+            pl.col("brent_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).alias("brent_eur_liter"),
+            pl.col("e5_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).alias("e5_product_eur_liter"),
+            pl.col("e10_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).alias("e10_product_eur_liter"),
+            pl.col("diesel_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).alias("diesel_product_eur_liter"),
+        ])
+        df = df.with_columns([
+            (pl.col("e5_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_e5"),
+            (pl.col("e10_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_e10"),
+            (pl.col("diesel_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_diesel"),
+            (pl.col("e5_net_price") - pl.col("e5_product_eur_liter")).alias("retail_margin_e5"),
+            (pl.col("e10_net_price") - pl.col("e10_product_eur_liter")).alias("retail_margin_e10"),
+            (pl.col("diesel_net_price") - pl.col("diesel_product_eur_liter")).alias("retail_margin_diesel"),
+            (pl.col("e5_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_e5"),
+            (pl.col("e10_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_e10"),
+            (pl.col("diesel_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_diesel"),
+        ])
     return df
 
 @st.cache_data(show_spinner="Loading intraday rhythm…")
@@ -380,6 +473,32 @@ def load_intraday_data():
     if not INTRADAY_FILE.exists():
         return None
     return pl.read_parquet(INTRADAY_FILE)
+
+@st.cache_data(show_spinner="Loading brand comparison data…")
+def load_brand_daily_data(smoothing_days: int = 1):
+    if not BRAND_DAILY_FILE.exists():
+        return None
+    df = pl.read_parquet(BRAND_DAILY_FILE)
+    if smoothing_days > 1:
+        df = df.sort("date").with_columns([
+            pl.col("Raw_Material_EUR_per_Liter").rolling_mean(window_size=smoothing_days, min_periods=1).over(["analysis_level", "comparison_group"]).alias("Raw_Material_EUR_per_Liter"),
+            pl.col("brent_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).over(["analysis_level", "comparison_group"]).alias("brent_eur_liter"),
+            pl.col("e5_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).over(["analysis_level", "comparison_group"]).alias("e5_product_eur_liter"),
+            pl.col("e10_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).over(["analysis_level", "comparison_group"]).alias("e10_product_eur_liter"),
+            pl.col("diesel_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).over(["analysis_level", "comparison_group"]).alias("diesel_product_eur_liter"),
+        ])
+        df = df.with_columns([
+            (pl.col("e5_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_e5"),
+            (pl.col("e10_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_e10"),
+            (pl.col("diesel_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_diesel"),
+            (pl.col("e5_net_price") - pl.col("e5_product_eur_liter")).alias("retail_margin_e5"),
+            (pl.col("e10_net_price") - pl.col("e10_product_eur_liter")).alias("retail_margin_e10"),
+            (pl.col("diesel_net_price") - pl.col("diesel_product_eur_liter")).alias("retail_margin_diesel"),
+            (pl.col("e5_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_e5"),
+            (pl.col("e10_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_e10"),
+            (pl.col("diesel_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_diesel"),
+        ])
+    return df
 
 # ── Intraday mock (static, not date-dependent) ────────────────────────────────
 @st.cache_data
@@ -427,7 +546,21 @@ with st.sidebar:
     st.markdown(f"<div style='color:#8892A4;font-size:0.8rem;margin-bottom:16px;'>{t('app_subtitle')}</div>", unsafe_allow_html=True)
     st.divider()
 
-    df_full = load_data()
+    smoothing_options = {
+        1: t("smooth_daily"),
+        7: t("smooth_weekly"),
+        14: t("smooth_biweekly"),
+        30: t("smooth_monthly"),
+    }
+    smoothing_days = st.selectbox(
+        t("procurement_smoothing"),
+        list(smoothing_options),
+        index=0,
+        format_func=lambda key: smoothing_options[key],
+        help=t("procurement_smoothing_help")
+    )
+
+    df_full = load_data(smoothing_days=smoothing_days)
     # Polars 1.x returns a native Python date scalar directly — no .to_python() needed
     raw_min = df_full["date"].min()
     raw_max = df_full["date"].max()
@@ -464,6 +597,18 @@ with st.sidebar:
     )
 
     st.divider()
+    baseline_options = {
+        "brent": t("brent_baseline"),
+        "refined": t("refined_baseline"),
+    }
+    spread_baseline_mode = st.selectbox(
+        t("spread_baseline_mode"),
+        list(baseline_options),
+        index=0,
+        format_func=lambda key: baseline_options[key]
+    )
+
+    st.divider()
     show_tax_trend = st.checkbox(t("tax_trend"), value=False, help=t("tax_trend_help"))
     
     st.divider()
@@ -497,11 +642,34 @@ col_map = {
     }
 }
 p_col = col_map[fuel_key]["price"]
-m_col = col_map[fuel_key]["margin"]
+
+# Dynamically override the margin column based on selection
+if spread_baseline_mode == "refined" and f"retail_margin_{fuel_key}" in df.columns:
+    m_col = f"retail_margin_{fuel_key}"
+else:
+    m_col = col_map[fuel_key]["margin"]
+
 vat_col = col_map[fuel_key]["vat"]
 ebv_col = col_map[fuel_key]["ebv"]
 co2_col = col_map[fuel_key]["co2"]
 energy_col = col_map[fuel_key]["energy"]
+
+def mean_for_date_window(source_df: pl.DataFrame, value_col: str, start: date, end: date) -> float:
+    window_df = source_df.filter((pl.col("date") >= start) & (pl.col("date") <= end))
+    value = window_df[value_col].mean() if not window_df.is_empty() else None
+    return float(value) if value is not None else float("nan")
+
+
+def stable_pre_event_margin_baseline(
+    source_df: pl.DataFrame,
+    margin_col: str,
+    event_start: date,
+) -> tuple[date, date, float]:
+    baseline_start = event_start - timedelta(days=STABLE_MARGIN_BASELINE_DAYS)
+    baseline_end = event_start - timedelta(days=1)
+    baseline_mean = mean_for_date_window(source_df, margin_col, baseline_start, baseline_end)
+    return baseline_start, baseline_end, baseline_mean
+
 
 # Calculate total tax for the "Combined" view
 df["total_tax"] = df[vat_col] + df[ebv_col] + df[co2_col] + df[energy_col]
@@ -521,9 +689,11 @@ current_raw  = df["Raw_Material_EUR_per_Liter"].iloc[-1]
 current_pump = df[p_col].iloc[-1]
 current_marg = df[m_col].iloc[-1]
 
-pre_disc  = df[df["date"] < "2022-06-01"][m_col].mean()
-disc_marg = df[(df["date"] >= "2022-06-01") & (df["date"] <= "2022-08-31")][m_col].mean()
-delta_marg = disc_marg - pre_disc if not (pre_disc != pre_disc) else 0  # nan-safe
+pre_disc_start, pre_disc_end, pre_disc = stable_pre_event_margin_baseline(
+    df_full, m_col, date(2022, 6, 1)
+)
+disc_marg = mean_for_date_window(df_full, m_col, date(2022, 6, 1), date(2022, 8, 31))
+delta_marg = disc_marg - pre_disc if not (pre_disc != pre_disc or disc_marg != disc_marg) else 0
 
 with kpi1:
     st.markdown(f"""<div class='kpi-card'>
@@ -559,10 +729,11 @@ with kpi4:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ── Tabs ────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab_brand, tab4 = st.tabs([
     t("tab_brent"),
     t("tab_spread"),
     t("tab_rhythm"),
+    t("tab_brand"),
     t("tab_location"),
 ])
 
@@ -603,6 +774,9 @@ def calculate_tax_break_pass_through(source_df: pl.DataFrame) -> list[dict[str, 
         period_days = (actual_end - start).days + 1
         pre_start = start - timedelta(days=period_days)
         pre_end = start - timedelta(days=1)
+        spread_pre_start, spread_pre_end, spread_baseline = stable_pre_event_margin_baseline(
+            analysis_df, m_col, start
+        )
 
         pre_df = analysis_df.filter((pl.col("date") >= pre_start) & (pl.col("date") <= pre_end))
         discount_df = analysis_df.filter((pl.col("date") >= start) & (pl.col("date") <= actual_end))
@@ -611,7 +785,12 @@ def calculate_tax_break_pass_through(source_df: pl.DataFrame) -> list[dict[str, 
 
         pump_drop = pre_df[p_col].mean() - discount_df[p_col].mean()
         tax_drop = pre_df["selected_total_tax"].mean() - discount_df["selected_total_tax"].mean()
-        spread_change = discount_df[m_col].mean() - pre_df[m_col].mean()
+        discount_spread = discount_df[m_col].mean()
+        spread_change = (
+            discount_spread - spread_baseline
+            if not (spread_baseline != spread_baseline or discount_spread is None)
+            else float("nan")
+        )
         raw_change = discount_df["Raw_Material_EUR_per_Liter"].mean() - pre_df["Raw_Material_EUR_per_Liter"].mean()
         pass_through = (pump_drop / tax_drop) if tax_drop else None
 
@@ -624,9 +803,50 @@ def calculate_tax_break_pass_through(source_df: pl.DataFrame) -> list[dict[str, 
             "pass_through": pass_through,
             "window": f"{start:%Y-%m-%d} – {actual_end:%Y-%m-%d}",
             "baseline": f"{pre_start:%Y-%m-%d} – {pre_end:%Y-%m-%d}",
+            "spread_baseline": f"{spread_pre_start:%Y-%m-%d} – {spread_pre_end:%Y-%m-%d}",
         })
 
     return rows
+
+
+def calculate_brand_policy_rows(
+    source_df: pl.DataFrame,
+    groups: list[str],
+    event_start: date,
+    planned_end: date,
+) -> list[dict[str, object]]:
+    max_date = source_df["date"].max()
+    if max_date is None or event_start > max_date:
+        return []
+
+    actual_end = min(planned_end, max_date)
+    rows = []
+    for group in groups:
+        group_df = source_df.filter(pl.col("comparison_group") == group)
+        if group_df.is_empty():
+            continue
+
+        baseline_start, baseline_end, baseline_margin = stable_pre_event_margin_baseline(
+            group_df, m_col, event_start
+        )
+        discount_margin = mean_for_date_window(group_df, m_col, event_start, actual_end)
+        discount_price = mean_for_date_window(group_df, p_col, event_start, actual_end)
+        station_count = group_df["station_count"].max()
+        if baseline_margin != baseline_margin or discount_margin != discount_margin:
+            continue
+
+        rows.append({
+            "group": group,
+            "station_count": int(station_count) if station_count is not None else 0,
+            "baseline_margin": baseline_margin,
+            "discount_margin": discount_margin,
+            "delta_margin": discount_margin - baseline_margin,
+            "discount_price": discount_price,
+            "baseline_window": f"{baseline_start:%Y-%m-%d} – {baseline_end:%Y-%m-%d}",
+            "discount_window": f"{event_start:%Y-%m-%d} – {actual_end:%Y-%m-%d}",
+        })
+
+    return sorted(rows, key=lambda row: row["delta_margin"], reverse=True)
 
 
 def welch_normal_p_value(before: list[float], after: list[float]) -> tuple[float, float]:
@@ -813,18 +1033,47 @@ with tab1:
         ))
         
         if tax_viz != "hide":
-            # Add net product spread layer
-            margin_pct = (df[m_col] / df[p_col]) * 100
-            fig.add_trace(go.Scatter(
-                x=df["date"], y=df[m_col],
-                name=t("spread_trace"),
-                mode="lines",
-                line=dict(width=0),
-                fillcolor="rgba(245, 166, 35, 0.6)", # Amber
-                stackgroup="one",
-                hovertemplate=t("spread_hover") + ": €%{y:.3f} (%{customdata:.1f}%)<extra></extra>",
-                customdata=margin_pct
-            ))
+            if spread_baseline_mode == "refined" and f"refining_spread_{fuel_key}" in df.columns:
+                # 1. Refining Margin Layer
+                ref_spread_col = f"refining_spread_{fuel_key}"
+                refining_pct = (df[ref_spread_col] / df[p_col]) * 100
+                fig.add_trace(go.Scatter(
+                    x=df["date"], y=df[ref_spread_col],
+                    name=t("refining_trace"),
+                    mode="lines",
+                    line=dict(width=0),
+                    fillcolor="rgba(148, 163, 184, 0.45)", # Slate-400
+                    stackgroup="one",
+                    hovertemplate=t("refining_trace") + ": €%{y:.3f} (%{customdata:.1f}%)<extra></extra>",
+                    customdata=refining_pct
+                ))
+                
+                # 2. Net Retail Spread Layer
+                retail_margin_col = f"retail_margin_{fuel_key}"
+                retail_pct = (df[retail_margin_col] / df[p_col]) * 100
+                fig.add_trace(go.Scatter(
+                    x=df["date"], y=df[retail_margin_col],
+                    name=t("retail_trace"),
+                    mode="lines",
+                    line=dict(width=0),
+                    fillcolor="rgba(245, 166, 35, 0.6)", # Amber
+                    stackgroup="one",
+                    hovertemplate=t("retail_trace") + ": €%{y:.3f} (%{customdata:.1f}%)<extra></extra>",
+                    customdata=retail_pct
+                ))
+            else:
+                # Add standard net product spread layer
+                margin_pct = (df[m_col] / df[p_col]) * 100
+                fig.add_trace(go.Scatter(
+                    x=df["date"], y=df[m_col],
+                    name=t("spread_trace"),
+                    mode="lines",
+                    line=dict(width=0),
+                    fillcolor="rgba(245, 166, 35, 0.6)", # Amber
+                    stackgroup="one",
+                    hovertemplate=t("spread_hover") + ": €%{y:.3f} (%{customdata:.1f}%)<extra></extra>",
+                    customdata=margin_pct
+                ))
 
         if tax_viz == "combined":
             tax_pct = (df["total_tax"] / df[p_col]) * 100
@@ -875,7 +1124,7 @@ with tab1:
         # Determine max Y axis to keep charts stable
         max_y = df[p_col].max() * 1.1
         fig.update_layout(**PLOT_LAYOUT, height=480, yaxis_title="€ / Liter", yaxis_range=[0, max_y])
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
 
         if corr_val != 0.0:
             st.markdown(f"<div style='text-align:right; font-size:0.85rem; color:#8892A4;'>Pearson Correlation (2-day lag): <strong>{corr_val*100:.1f}%</strong></div>", unsafe_allow_html=True)
@@ -905,14 +1154,18 @@ with tab1:
             fig_trend.add_hline(y=50, line_dash="dot", line_color=BLUE, line_width=1,
                    annotation_text=" 50% Threshold", annotation_font_color=BLUE)
             fig_trend.update_layout(**PLOT_LAYOUT, height=350, yaxis_title=t("tax_percent"), yaxis_ticksuffix="%")
-            st.plotly_chart(fig_trend, width="stretch")
+            st.plotly_chart(fig_trend, use_container_width=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TAB 2: Net Product Spread
 # ──────────────────────────────────────────────────────────────────────────────
 with tab2:
-    st.markdown(f"#### {t('spread_title')}")
-    st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('spread_note')}</span>", unsafe_allow_html=True)
+    if spread_baseline_mode == "refined":
+        st.markdown(f"#### {t('retail_spread_title')}")
+        st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('retail_spread_note')}</span>", unsafe_allow_html=True)
+    else:
+        st.markdown(f"#### {t('spread_title')}")
+        st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('spread_note')}</span>", unsafe_allow_html=True)
 
     fig2 = go.Figure()
     fig2.add_trace(go.Scatter(
@@ -927,12 +1180,13 @@ with tab2:
                    annotation_text=f" {t('historical_avg')}: €{baseline:.3f}", annotation_font_color=BLUE)
     fig2 = add_discount_bands(fig2)
     fig2.update_layout(**PLOT_LAYOUT, height=400, yaxis_title=f"{t('net_spread')} (€/L)")
-    st.plotly_chart(fig2, width="stretch")
+    st.plotly_chart(fig2, use_container_width=True)
 
     # Sub-metrics below chart
     c1, c2, c3 = st.columns(3)
     with c1:
         st.metric(t("pre_discount_avg"), f"€{pre_disc:.4f}")
+        st.caption(f"{pre_disc_start:%Y-%m-%d} – {pre_disc_end:%Y-%m-%d}")
     with c2:
         sign = "+" if delta_marg > 0 else ""
         st.metric(t("during_discount_1"), f"€{disc_marg:.4f}", f"{sign}€{delta_marg:.4f}", delta_color="inverse")
@@ -967,7 +1221,7 @@ with tab2:
             barmode="group",
             yaxis_title="€ / Liter",
         )
-        st.plotly_chart(fig_pass, width="stretch")
+        st.plotly_chart(fig_pass, use_container_width=True)
 
         table_rows = []
         for row in pass_rows:
@@ -975,6 +1229,7 @@ with tab2:
             table_rows.append({
                 t("event"): row["event"],
                 t("comparison_window"): f"{row['baseline']} vs. {row['window']}",
+                t("spread_baseline"): row["spread_baseline"],
                 t("pump_drop"): f"€{row['pump_drop']:.3f}/L",
                 t("tax_drop"): f"€{row['tax_drop']:.3f}/L",
                 t("pass_through"): f"{pass_pct:.1f}%" if pass_pct is not None else "n/a",
@@ -1085,7 +1340,7 @@ with tab2:
             "showlegend": False,
         }
         fig_event.update_layout(**event_layout)
-        st.plotly_chart(fig_event, width="stretch")
+        st.plotly_chart(fig_event, use_container_width=True)
 
         # ── Auto-generated interpretation: compute the numbers, show the verdict ──
         if not group.empty and normalize_opt:
@@ -1199,13 +1454,142 @@ with tab3:
 
     fig3.update_layout(**PLOT_LAYOUT, height=400, xaxis_title=t("hour_of_day"), yaxis_title=t("avg_pump_price"))
     fig3.update_xaxes(tickmode="linear", dtick=2, gridcolor="rgba(255,255,255,0.05)")
-    st.plotly_chart(fig3, width="stretch")
+    st.plotly_chart(fig3, use_container_width=True)
 
     if primary_stats is not None:
         st.info(f"💡 **{t('lowest_info')}:** {best_h_overall:02d}:00 (≈€{(max_overall - min_overall):.2f}/L {t('below_peak')} {worst_h_overall:02d}:00). {t('per_tank')} ~**€{50*(max_overall-min_overall):.1f}**.")
 
 # ──────────────────────────────────────────────────────────────────────────────
-# TAB 4: Location Premium
+# TAB 4: Brand Comparison
+# ──────────────────────────────────────────────────────────────────────────────
+with tab_brand:
+    st.markdown(f"#### {t('brand_title')}")
+    st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('brand_note')}</span>", unsafe_allow_html=True)
+
+    brand_df_full = load_brand_daily_data(smoothing_days=smoothing_days)
+
+    if brand_df_full is None:
+        st.warning(t("brand_data_missing"))
+    else:
+        level_options = {
+            "brand": t("brand_level_brand"),
+            "owner": t("brand_level_owner"),
+        }
+        policy_windows = {
+            "discount_2022": (t("tankrabatt_1"), date(2022, 6, 1), date(2022, 8, 31)),
+            "discount_2026": (t("tankrabatt_2"), date(2026, 5, 1), date(2026, 6, 30)),
+        }
+
+        c_level, c_window = st.columns([2, 1])
+        with c_level:
+            selected_level = st.selectbox(
+                t("brand_level"),
+                options=list(level_options),
+                format_func=lambda key: level_options[key],
+            )
+        with c_window:
+            selected_policy = st.selectbox(
+                t("policy_window"),
+                options=list(policy_windows),
+                format_func=lambda key: policy_windows[key][0],
+            )
+
+        level_df = brand_df_full.filter(pl.col("analysis_level") == selected_level)
+        group_stats = (
+            level_df.group_by("comparison_group")
+            .agg(pl.col("station_count").max().alias("station_count"))
+            .sort("station_count", descending=True)
+        )
+        group_options = group_stats["comparison_group"].to_list()
+        default_groups = group_options[:8]
+
+        selected_groups = st.multiselect(
+            t("brand_groups"),
+            options=group_options,
+            default=default_groups,
+            help=t("brand_groups_help"),
+        )
+
+        if selected_groups:
+            visible_brand_df = level_df.filter(
+                (pl.col("date") >= date_range[0])
+                & (pl.col("date") <= date_range[1])
+                & (pl.col("comparison_group").is_in(selected_groups))
+            )
+
+            fig_brand = go.Figure()
+            brand_colors = [BLUE, ACCENT, ACCENT_ALT, DANGER, "#A78BFA", "#14B8A6", "#F97316", "#E879F9"]
+            if not visible_brand_df.is_empty():
+                trend_pd = visible_brand_df.sort(["comparison_group", "date"]).to_pandas()
+                for idx, group_name in enumerate(selected_groups):
+                    group_pd = trend_pd[trend_pd["comparison_group"] == group_name]
+                    if group_pd.empty:
+                        continue
+                    fig_brand.add_trace(go.Scatter(
+                        x=group_pd["date"],
+                        y=group_pd[m_col],
+                        name=group_name,
+                        mode="lines",
+                        line=dict(color=brand_colors[idx % len(brand_colors)], width=2.2),
+                    ))
+
+            fig_brand = add_discount_bands(fig_brand)
+            fig_brand.update_layout(
+                **PLOT_LAYOUT,
+                height=420,
+                title=t("brand_margin_trend"),
+                yaxis_title=f"{t('net_spread')} (€/L)",
+            )
+            st.plotly_chart(fig_brand, use_container_width=True)
+
+            _, event_start, planned_end = policy_windows[selected_policy]
+            brand_rows = calculate_brand_policy_rows(
+                level_df,
+                selected_groups,
+                event_start,
+                planned_end,
+            )
+
+            st.markdown(f"#### {t('brand_delta_title')}")
+            st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('brand_delta_note')}</span>", unsafe_allow_html=True)
+
+            if brand_rows:
+                fig_brand_delta = go.Figure(go.Bar(
+                    x=[row["group"] for row in brand_rows],
+                    y=[row["delta_margin"] for row in brand_rows],
+                    marker_color=[DANGER if row["delta_margin"] > 0 else ACCENT_ALT for row in brand_rows],
+                    text=[f"{row['delta_margin']:+.3f}" for row in brand_rows],
+                    textposition="outside",
+                ))
+                fig_brand_delta.add_hline(y=0, line_dash="dot", line_color="rgba(255,255,255,0.25)", line_width=1)
+                fig_brand_delta.update_layout(
+                    **PLOT_LAYOUT,
+                    height=380,
+                    yaxis_title=f"{t('delta_margin')} (€/L)",
+                    showlegend=False,
+                )
+                st.plotly_chart(fig_brand_delta, use_container_width=True)
+
+                table_rows = []
+                for row in brand_rows:
+                    table_rows.append({
+                        t("group"): row["group"],
+                        t("stations"): f"{row['station_count']:,}",
+                        t("baseline_margin"): f"€{row['baseline_margin']:.4f}/L",
+                        t("discount_margin"): f"€{row['discount_margin']:.4f}/L",
+                        t("delta_margin"): f"{row['delta_margin']:+.4f}/L",
+                        t("discount_price"): f"€{row['discount_price']:.4f}/L",
+                        t("spread_baseline"): row["baseline_window"],
+                        t("comparison_window"): row["discount_window"],
+                    })
+                st.dataframe(table_rows, hide_index=True, width="stretch")
+            else:
+                st.info(t("brand_data_missing"))
+        else:
+            st.info(t("brand_groups_help"))
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TAB 5: Location Premium
 # ──────────────────────────────────────────────────────────────────────────────
 with tab4:
     st.markdown(f"#### {t('location_title')}")
@@ -1225,7 +1609,7 @@ with tab4:
                    annotation_text=f" Rural baseline: €{cheapest:.2f}", annotation_font_color=ACCENT_ALT)
     fig4.update_layout(**PLOT_LAYOUT, height=380, yaxis_title=t("avg_pump_price"), showlegend=False)
     fig4.update_yaxes(range=[1.65, 2.25], gridcolor="rgba(255,255,255,0.05)")
-    st.plotly_chart(fig4, width="stretch")
+    st.plotly_chart(fig4, use_container_width=True)
 
     c1, c2 = st.columns(2)
     autobahn = geo.loc[geo["Location"] == "Autobahn", "Avg_Price"].values[0]
