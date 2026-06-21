@@ -848,8 +848,21 @@ def add_discount_bands(fig):
                 x0=x0, x1=x1, fillcolor=color, opacity=1,
                 layer="below", line_width=1, line_color="rgba(245,166,35,0.3)"
             )
-            # Clamp the horizontal start position to visible area and enable axis clipping
+            # Clamp the horizontal start position to visible area
             anno_x = max(x0, visible_min)
+            
+            # Determine alignment anchor dynamically to prevent overflowing the right edge
+            try:
+                from datetime import datetime
+                d_anno = datetime.strptime(anno_x, "%Y-%m-%d")
+                d_max = datetime.strptime(visible_max, "%Y-%m-%d")
+                if (d_max - d_anno).days < 45:
+                    anchor = "right"
+                else:
+                    anchor = "left"
+            except Exception:
+                anchor = "left"
+
             fig.add_annotation(
                 x=anno_x,
                 y=0.98,
@@ -857,10 +870,9 @@ def add_discount_bands(fig):
                 yref="paper",
                 text=label,
                 showarrow=False,
-                xanchor="left",
+                xanchor=anchor,
                 yanchor="top",
                 font=dict(color="#F5A623", size=11),
-                cliponaxis=True
             )
     return fig
 

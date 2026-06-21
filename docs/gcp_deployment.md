@@ -24,14 +24,14 @@ Before running the deployment script, ensure you have the following set up on yo
 2. **Configure IAM Permissions** (if not already set up):
    Ensure your account or build service account has the necessary permissions. You may need to run commands like:
    ```bash
-   gcloud projects add-iam-policy-binding project-75366ce0-f637-4d56-bcb \
-       --member="serviceAccount:751243983026-compute@developer.gserviceaccount.com" \
-       --role="roles/artifactregistry.writer"
+    gcloud projects add-iam-policy-binding YOUR_GCP_PROJECT_ID \
+        --member="serviceAccount:YOUR_COMPUTE_SERVICE_ACCOUNT@developer.gserviceaccount.com" \
+        --role="roles/artifactregistry.writer"
    ```
 
 ## Deploying the Dashboard
 
-A deployment script [deploy_gcp.sh](file:///Users/l1/Desktop/1_Project_German_GasolinePrices21.05/deploy_gcp.sh) has been provided in the project root.
+A deployment script [deploy_gcp.sh](deploy_gcp.sh) has been provided in the project root.
 
 1. **Make the script executable**:
    ```bash
