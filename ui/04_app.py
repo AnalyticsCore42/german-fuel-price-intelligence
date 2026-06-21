@@ -87,6 +87,39 @@ st.markdown("""
     .kpi-delta.up   { color: #F5A623; }
     .kpi-delta.down { color: #22C55E; }
     .kpi-delta.bad  { color: #EF4444; }
+    .kpi-subtitle   { font-size: 0.75rem; color: #6b7280; margin-top: 6px; }
+
+    /* ── Styled Selectboxes / Dropdowns ── */
+    select, div[data-testid="stSelectbox"] > div {
+        background-color: #121929 !important;
+        border: 1px solid #2A3347 !important;
+        color: #E8EAF0 !important;
+        border-radius: 8px !important;
+        transition: border-color 0.2s, box-shadow 0.2s !important;
+    }
+    select:hover, div[data-testid="stSelectbox"] > div:hover {
+        border-color: rgba(245, 166, 35, 0.4) !important;
+    }
+    select:focus, div[data-testid="stSelectbox"] > div:focus-within {
+        border-color: #F5A623 !important;
+        box-shadow: 0 0 0 1px #F5A623 !important;
+        outline: none !important;
+    }
+    div[data-baseweb="select"] {
+        background-color: #121929 !important;
+    }
+    ul[role="listbox"] {
+        background-color: #121929 !important;
+        border: 1px solid #2A3347 !important;
+        border-radius: 8px !important;
+    }
+    li[role="option"] {
+        color: #E8EAF0 !important;
+    }
+    li[role="option"]:hover, li[role="option"][aria-selected="true"] {
+        background-color: rgba(245, 166, 35, 0.15) !important;
+        color: #F5A623 !important;
+    }
 
     /* ── Alert banner ── */
     .info-banner {
@@ -114,10 +147,19 @@ PLOT_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
     font=dict(family="Inter", color="#8892A4"),
-    margin=dict(l=10, r=10, t=40, b=10),
+    margin=dict(l=10, r=10, t=40, b=70), # increased bottom margin for horizontal legend
     hovermode="x unified",
     hoverlabel=dict(bgcolor="#121929", bordercolor="#2A3347", font_size=13),
-    legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="rgba(0,0,0,0)"),
+    legend=dict(
+        orientation="h",
+        yanchor="top",
+        y=-0.15,
+        xanchor="left",
+        x=0,
+        bgcolor="rgba(0,0,0,0)",
+        bordercolor="rgba(0,0,0,0)"
+    ),
+    modebar=dict(remove='all'), # hide Plotly default toolbar globally
     xaxis=dict(gridcolor="rgba(255,255,255,0.05)", showline=False),
     yaxis=dict(gridcolor="rgba(255,255,255,0.05)", showline=False),
 )
@@ -188,7 +230,7 @@ TRANSLATIONS = {
         "tab_brand": "Brand Comparison",
         "tab_location": "Regional Pricing",
         "brent_vs_pump_title": "Retail Pump Price vs. Raw Brent Crude",
-        "brent_vs_pump_note": "The gap between the two lines contains taxes plus the net product spread over Brent. That spread still includes refining, logistics, retail operations, overhead, and profit.",
+        "brent_vs_pump_note": "Gap = taxes + net product spread (incl. refining, logistics, retail margin).",
         "spread_trace": "Net Product Spread",
         "spread_hover": "Spread",
         "total_taxes": "Total Taxes",
@@ -327,7 +369,7 @@ TRANSLATIONS = {
         "tab_brand": "Markenvergleich",
         "tab_location": "Regionale Preise",
         "brent_vs_pump_title": "Zapfsäulenpreis vs. Brent-Rohöl",
-        "brent_vs_pump_note": "Die Lücke zwischen den Linien enthält Steuern plus Netto-Produktspanne über Brent. Diese Spanne enthält weiterhin Raffinerie, Logistik, Stationsbetrieb, Gemeinkosten und Gewinn.",
+        "brent_vs_pump_note": "Differenz = Steuern + Netto-Produktspanne (inkl. Raffination, Logistik, Handelsmarge).",
         "spread_trace": "Netto-Produktspanne",
         "spread_hover": "Spanne",
         "total_taxes": "Steuern gesamt",
@@ -722,7 +764,7 @@ else:
     corr_val = 0.0
 
 # ── KPI Row ──────────────────────────────────────────────────────────────────
-kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
 
 current_raw  = df["Raw_Material_EUR_per_Liter"].iloc[-1]
 current_pump = df[p_col].iloc[-1]
@@ -738,31 +780,39 @@ with kpi1:
     st.markdown(f"""<div class='kpi-card'>
         <div class='kpi-label'>{t('brent')}</div>
         <div class='kpi-value'>€{current_raw:.3f}</div>
-        <div class='kpi-delta up'>{t('raw_material_cost')}</div>
+        <div class='kpi-subtitle'>{t('raw_material_cost')}</div>
     </div>""", unsafe_allow_html=True)
 
 with kpi2:
     st.markdown(f"""<div class='kpi-card'>
         <div class='kpi-label'>{t('pump_price')} ({fuel_type})</div>
         <div class='kpi-value'>€{current_pump:.3f}</div>
-        <div class='kpi-delta'>{t('national_avg')}</div>
+        <div class='kpi-subtitle'>{t('national_avg')}</div>
     </div>""", unsafe_allow_html=True)
 
 with kpi3:
-    delta_class = "bad" if current_marg > 0.10 else "down"
     st.markdown(f"""<div class='kpi-card'>
         <div class='kpi-label'>{t('net_spread')}</div>
         <div class='kpi-value'>€{current_marg:.3f}</div>
-        <div class='kpi-delta {delta_class}'>{t('spread_kpi_note')}</div>
+        <div class='kpi-subtitle'>{t('spread_kpi_note')}</div>
     </div>""", unsafe_allow_html=True)
 
 with kpi4:
     sign = "+" if delta_marg > 0 else ""
-    cls  = "bad" if delta_marg > 0 else "down"
     st.markdown(f"""<div class='kpi-card'>
         <div class='kpi-label'>{t('spread_delta_discount_1')}</div>
         <div class='kpi-value'>{sign}€{delta_marg:.3f}</div>
-        <div class='kpi-delta {cls}'>{t('pre_discount_compared')}</div>
+        <div class='kpi-subtitle'>{t('pre_discount_compared')}</div>
+    </div>""", unsafe_allow_html=True)
+
+with kpi5:
+    corr_label = "Brent Correlation" if lang == "en" else "Brent-Korrelation"
+    corr_sub = "2-day lag, full period" if lang == "en" else "2 Tage Lag, gesamter Zeitraum"
+    corr_str = f"{corr_val*100:.1f}%" if corr_val != 0.0 else "N/A"
+    st.markdown(f"""<div class='kpi-card'>
+        <div class='kpi-label'>{corr_label}</div>
+        <div class='kpi-value'>{corr_str}</div>
+        <div class='kpi-subtitle'>{corr_sub}</div>
     </div>""", unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -1055,7 +1105,7 @@ def get_event_study_timeline(
 # ──────────────────────────────────────────────────────────────────────────────
 with tab1:
     with st.container():
-        st.markdown(f"#### {t('brent_vs_pump_title')} — {fuel_type}")
+        st.markdown(f"<h4 style='margin:0;'>{t('brent_vs_pump_title')} — {fuel_type}</h4>", unsafe_allow_html=True)
         st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('brent_vs_pump_note')}</span>", unsafe_allow_html=True)
 
         fig = go.Figure()
@@ -1131,10 +1181,10 @@ with tab1:
             # Plot in order from bottom to top: EBV -> CO2 -> Energy -> VAT
             # using a cohesive slate/indigo gradient
             tax_layers = [
-                (ebv_col, t("ebv"), "rgba(51, 65, 85, 0.6)"),       # Slate-700
-                (co2_col, t("co2"), "rgba(71, 85, 105, 0.6)"),            # Slate-600
-                (energy_col, t("energy_tax"), "rgba(100, 116, 139, 0.6)"),        # Slate-500
-                (vat_col, t("vat"), "rgba(148, 163, 184, 0.6)") # Slate-400
+                (ebv_col, t("ebv"), "#334155"),       # Slate-700
+                (co2_col, t("co2"), "#475569"),       # Slate-600
+                (energy_col, t("energy_tax"), "#94a3b8"),   # Slate-400
+                (vat_col, t("vat"), "#64748b")        # Slate-500
             ]
             
             for col, name, color in tax_layers:
@@ -1165,9 +1215,7 @@ with tab1:
         fig.update_layout(**PLOT_LAYOUT, height=480, yaxis_title="€ / Liter", yaxis_range=[0, max_y])
         st.plotly_chart(fig, use_container_width=True)
 
-        if corr_val != 0.0:
-            corr_label = "Pearson Correlation (2-day lag):" if lang == "en" else "Pearson-Korrelation (2 Tage Lag):"
-            st.markdown(f"<div style='text-align:right; font-size:0.85rem; color:#8892A4;'>{corr_label} <strong>{corr_val*100:.1f}%</strong></div>", unsafe_allow_html=True)
+
             
         if show_tax_trend:
             st.markdown(f"#### {t('tax_burden_title')}")
