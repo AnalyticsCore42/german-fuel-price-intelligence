@@ -1,84 +1,187 @@
-Here is the definitive, verified dossier of the German fuel market as of May 2026. This is the exact "Ground Truth" you should save as a Markdown file (e.g., market_structure.md) and feed into your Agentic RAG pipeline.
+# German Fuel Brand And Ownership Ground Truth
 
-By having this exact mapping, your LLM will never hallucinate corporate ownership or incorrectly aggregate independent competitors.
+This file includes the working mapping from visible German fuel-station brand names to ownership groups, the dashboard grouping rules, and the market-context notes needed for brand-level margin analysis.
 
-🔴 Tier 1: Global Conglomerates & "Big Oil"
+## How This File Is Used
 
-These are the massive multinational players. Their pricing strategies are highly centralized.
+- `scripts/01_clean_stations.py` cleans raw station brands to uppercase names and assigns `corporate_group`.
+- `scripts/04_build_dashboard_dataset.py` creates two dashboard comparison levels:
+  - `brand`: visible brand names, with all brands below 50 stations grouped as `Other brands (<50 stations)`.
+  - `owner`: corporate ownership groups from `corporate_group`.
+- `ui/04_app.py` uses those two levels in the Brand Comparison tab.
+- The future RAG pipeline should read this file as the source of truth for brand and ownership interpretation instead of guessing ownership dynamically.
 
-- **BP (British Petroleum)**:
+## Dashboard Grouping Rules
+
+The dashboard intentionally separates customer-facing brand behavior from ownership-level behavior.
+
+- Brand comparison: each visible brand with at least 50 stations stays separate, while smaller brands are grouped into `Other brands (<50 stations)`.
+- Ownership comparison: brands owned or operated together are grouped under one `corporate_group`.
+- Unknown or unmapped raw brands are not forced into a major group; they stay in `Unknown` or `Independent / Small Operator`.
+
+This structure lets the analysis compare, for example, whether a cheaper child brand behaves differently from a premium brand under the same owner.
+
+## Exact ETL Mapping
+
+| Raw brand value | Corporate group |
+| --- | --- |
+| ACCESS | Couche-Tard (Total) |
+| AGIP | Eni |
+| AGIP ENI | Eni |
+| ARAL | BP (Aral) |
+| AVIA | AVIA Cooperative |
+| BAYWA | Agricultural Co-ops (Raiffeisen/BayWa) |
+| BFT | BFT (Independent Assoc.) |
+| BFT (FREIE) | BFT (Independent Assoc.) |
+| CALPAM | Bolloré Group |
+| CLASSIC | Christian Lühmann GmbH |
+| ED | Erich Doetsch (ED) |
+| ELAN | Couche-Tard (Total) |
+| ESSO | EG Group (Esso) |
+| FREI | BFT (Independent Assoc.) |
+| FREIE | BFT (Independent Assoc.) |
+| GULF | Gulf / Independent |
+| HEM | Oilinvest (HEM/Tamoil) |
+| HOYER | Hoyer Group |
+| JET | Stonepeak (JET) |
+| MARKANT | Westfalen AG |
+| NORDOEL | Lother GmbH |
+| OIL! | Prax Group |
+| ORLEN | Orlen (Polish State) |
+| PM | PM Pfennings |
+| Q1 | Q1 Energie AG |
+| RAIFFEISEN | Agricultural Co-ops (Raiffeisen/BayWa) |
+| SB | SB (Generic/Discount) |
+| SCORE | SCORE GmbH |
+| SHELL | Shell |
+| SPRINT | Hoyer Group |
+| STAR | Orlen (Polish State) |
+| SUPERMARKT | Grocery Retailers |
+| T | Oilinvest (HEM/Tamoil) |
+| TANKCENTER | Grocery Retailers |
+| TEAM | team energie GmbH |
+| TOTAL | Couche-Tard (Total) |
+| TOTALENERGIES | Couche-Tard (Total) |
+| UNKNOWN | Unknown |
+| WESTFALEN | Westfalen AG |
+| Any unmapped brand | Independent / Small Operator |
+
+## Tier 1: Global Conglomerates And Big Oil
+
+These are large multinational players with more centralized pricing structures.
+
+- BP (British Petroleum)
   - Brands: ARAL
-  - Context: The undisputed market leader in Germany. Unlike in other countries, BP operates almost entirely under the Aral brand in the German market.
-- **Alimentation Couche-Tard (Circle K)**:
-  - Brands: TOTALENERGIES, ELAN, ACCESS
-  - Context: Crucial M&A update. In early 2024, the Canadian retail giant Couche-Tard acquired the entire German network from TotalEnergies. They operate TotalEnergies as the premium brand, and Elan/Access as their discount partners.
-- **Shell plc**:
+  - Context: BP operates in Germany almost entirely under the Aral brand. Aral is treated as the German-facing BP retail brand.
+- Alimentation Couche-Tard / Circle K
+  - Brands: TOTALENERGIES, TOTAL, ELAN, ACCESS
+  - Context: Couche-Tard acquired the German TotalEnergies retail network in early 2024. TotalEnergies is treated as the premium-facing brand, while Elan and Access are discount or secondary partner brands.
+- Shell plc
   - Brands: SHELL
-  - Context: Operates directly under its own massive global brand.
-- **Eni S.p.A. (Italy)**:
-  - Brands: AGIP ENI
-  - Context: The Italian state-linked giant. (Note: While they operate many "SB" discount stations, the data cannot perfectly isolate them, so Agip/Eni is tracked independently from generic "SB" signs).
-- **PKN Orlen (Polish State)**:
+  - Context: Shell operates directly under its global brand.
+- Eni S.p.A.
+  - Brands: AGIP ENI, AGIP
+  - Context: Agip/Eni is tracked separately from generic `SB` signs. Some SB stations may be connected to Eni in practice, but the data cannot isolate that cleanly.
+- PKN Orlen
   - Brands: STAR, ORLEN
-  - Context: Controlled by the Polish state refiner. They historically used the "star" brand in Germany but are actively rebranding their network to "Orlen."
+  - Context: Orlen controls the Star/Orlen network. Star is the legacy German-facing brand, while Orlen is the active rebrand direction.
 
-🟠 Tier 2: Private Equity & Recent Acquisitions
+## Tier 2: Private Equity And Recent Acquisitions
 
-These networks recently changed hands, making pre-2025 data sources highly inaccurate.
+These networks recently changed hands, so older ownership assumptions can be misleading.
 
-- **Stonepeak & EEP**:
+- Stonepeak and EEP
   - Brands: JET
-  - Context: Major 2025 Update. Closed a €2.5 Billion deal on December 1, 2025, to acquire JET from Phillips 66 (who retained only a 35% non-operative stake). JET is famous for being the most aggressive discounter among the major brands.
-- **EG Group (UK)**:
+  - Context: Stonepeak and EEP closed a EUR 2.5 billion deal on December 1, 2025, to acquire JET from Phillips 66, with Phillips 66 retaining a 35% non-operative stake. JET is treated as an aggressive discount brand among the major networks.
+- EG Group
   - Brands: ESSO
-  - Context: ExxonMobil owns the "Esso" brand and supplies the fuel, but the UK-based EG Group actually operates the physical stations and sets the retail pricing.
-- **Prax Group (UK)**:
+  - Context: ExxonMobil owns the Esso brand and supplies fuel, while EG Group operates the physical station network and sets retail pricing.
+- Prax Group
   - Brands: OIL!
-  - Context: Fully acquired from the German Mabanaft group.
+  - Context: Prax fully acquired OIL! from the German Mabanaft group.
 
-🟢 Tier 3: The "Mittelstand" Consolidations (The Hidden Giants)
+## Tier 3: Mittelstand Consolidations
 
-These are large, family-owned German companies that have quietly swallowed up other brands. This is where most standard AI models hallucinate.
+These are large German or regional operators that can otherwise look like unrelated independent brands.
 
-- **Wilhelm Hoyer Group (HQ: Visselhövede)**:
+- Wilhelm Hoyer Group
   - Brands: HOYER, SPRINT
-  - Context: A massive independent player in Northern Germany. Combining Hoyer and Sprint creates a single corporate block of over 260 stations.
-- **Westfalen AG (HQ: Münster)**:
+  - Context: Hoyer is a large independent northern German player. Combining Hoyer and Sprint creates one corporate block.
+- Westfalen AG
   - Brands: WESTFALEN, MARKANT
-  - Context: Westfalen is the premium brand; Markant (acquired from Kuwait Petroleum in 2006) serves as their discount/secondary arm.
-- **Christian Lühmann GmbH (HQ: Hoya)**:
+  - Context: Westfalen is the premium brand. Markant, acquired from Kuwait Petroleum in 2006, functions as a discount or secondary arm.
+- Christian Lühmann GmbH
   - Brands: CLASSIC
-  - Context: 100% independent, family-owned since 1882. No relation to Mabanaft.
-- **Lother GmbH (HQ: Hamburg)**:
+  - Context: Classic is treated as an independent family-owned network, not as part of Mabanaft.
+- Lother GmbH
   - Brands: NORDOEL
-  - Context: Regional powerhouse dominating Schleswig-Holstein and surrounding areas.
-- **Q1 Energie AG (HQ: Osnabrück)**:
+  - Context: Nordoel is a regional powerhouse, especially around Schleswig-Holstein and northern Germany.
+- Q1 Energie AG
   - Brands: Q1
-  - Context: Broke away from the AVIA cooperative in the 1980s to become a fierce independent competitor.
+  - Context: Q1 broke away from the AVIA cooperative in the 1980s and is treated as its own independent competitor.
+- team energie GmbH
+  - Brands: TEAM
+  - Context: Team is tracked as its own mid-sized operator.
+- PM Pfennings
+  - Brands: PM
+  - Context: PM is tracked as its own operator.
+- SCORE GmbH
+  - Brands: SCORE
+  - Context: Score is tracked as its own operator.
+- Erich Doetsch
+  - Brands: ED
+  - Context: ED is tracked as its own operator.
 
-🟡 Tier 4: International Niche Holdings
+## Tier 4: International Niche Holdings
 
-- **Oilinvest Group (Libya)**:
-  - Brands: HEM, T (Tamoil)
-  - Context: The downstream retail arm of the Libyan Investment Authority.
-- **Bolloré Group (France)**:
+- Oilinvest Group
+  - Brands: HEM, T
+  - Context: HEM and T/Tamoil belong to the Oilinvest downstream retail structure.
+- Bolloré Group
   - Brands: CALPAM
-  - Context: The retail stations (HQ'd in Aschaffenburg) are owned by this massive French logistics conglomerate, not to be confused with the Hamburg-based bunkering sister company.
+  - Context: Calpam retail stations are treated as owned by the French Bollore Group and should not be confused with similarly named Hamburg bunkering activity.
+- Gulf / Independent
+  - Brands: GULF
+  - Context: Gulf is kept as its own independent/niche label because ownership and operation can be locally fragmented.
 
-🟣 Tier 5: Cooperatives & Generics (Fragmented Pricing)
+## Tier 5: Cooperatives, Associations, Generics, And Fragmented Pricing
 
-These brands do not have centralized pricing algorithms.
+These groups should not be interpreted as centrally priced in the same way as large corporate chains.
 
-- **The Cooperatives: AVIA, BFT (FREIE), FREI, RAIFFEISEN, BAYWA**
-  - Context: These are umbrella associations for independent owners or agricultural cooperatives. Your RAG LLM must know that a price hike at one AVIA does not guarantee a price hike at an AVIA in the next town over.
-- **The Grocery Retailers: SUPERMARKT, TANKCENTER**
-  - Context: Loss-leader stations located in supermarket parking lots (Edeka, Kaufland, etc.).
-- **The Ambiguous Discount Sign: SB (Selbstbedienung)**
-  - Context: Kept isolated in the dataset. While Eni uses this name heavily, it is also used generically by independent operators.
+- AVIA Cooperative
+  - Brands: AVIA
+  - Context: AVIA is an umbrella cooperative. A price movement at one AVIA station does not necessarily imply the same pricing decision at another AVIA station.
+- BFT Independent Association
+  - Brands: BFT (FREIE), BFT, FREI, FREIE
+  - Context: These labels represent independent or association-linked operators. Treat them as fragmented rather than centrally controlled.
+- Agricultural co-ops
+  - Brands: RAIFFEISEN, BAYWA
+  - Context: These are agricultural cooperative or cooperative-adjacent networks.
+- Grocery retailers
+  - Brands: SUPERMARKT, TANKCENTER
+  - Context: These are typically supermarket or retail-center fuel stations and may behave differently from highway or full-service branded networks.
+- SB generic discount
+  - Brands: SB
+  - Context: SB means self-service and is ambiguous. Eni uses the label heavily, but independent operators also use it, so the dashboard keeps SB isolated.
+- Unknown
+  - Brands: UNKNOWN
+  - Context: Missing or empty raw brand values are normalized to `UNKNOWN` and mapped to `Unknown`.
+- Independent / Small Operator
+  - Brands: any raw brand not listed in the mapping table
+  - Context: Unmapped brands remain in the long-tail independent bucket instead of being guessed into a larger group.
 
-🚨 Bonus Policy Context: The 2026 "12:00 PM Rule"
+## Premium And Discount Child-Brand Pairs To Watch
 
-If your dashboard analyzes the "12:00 PM hike," your LLM needs to know why it's happening.
+- Couche-Tard: compare TOTALENERGIES/TOTAL against ELAN and ACCESS.
+- Westfalen AG: compare WESTFALEN against MARKANT.
+- Hoyer Group: compare HOYER against SPRINT.
+- Orlen: compare STAR against ORLEN during the rebrand period.
+- Oilinvest: compare HEM against T/Tamoil where both appear.
+- Cooperatives and associations: compare AVIA, BFT/FREIE, RAIFFEISEN, and BAYWA carefully because centralized control is weaker.
 
-- **The Law**: The Kraftstoffpreisanpassungsgesetz (Fuel Price Adjustment Act) of April 2026 legally restricts gas stations to raising their prices only once a day, exactly at 12:00 PM.
-- **The Market Impact**: Because stations can no longer react to wholesale oil spikes in the afternoon, independent stations (like BFT/Freie) began applying massive "safety margins" exactly at noon to protect themselves from intraday Brent crude fluctuations.
+## Related 2026 Policy Context
+
+The 2026 `12:00 PM rule` matters for brand analysis because it may affect independent and fragmented operators differently from larger centrally priced groups.
+
+- Law: the Kraftstoffpreisanpassungsgesetz of April 2026 restricts stations to raising prices only once per day, at 12:00 PM.
+- Market impact: because stations cannot freely react to afternoon wholesale movements, independent stations may apply larger safety margins at noon to protect against intraday Brent or wholesale volatility.
