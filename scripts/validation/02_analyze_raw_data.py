@@ -74,9 +74,9 @@ def analyze():
     print(f"Price change events missing a valid station UUID: {unmapped_count:,} ({(unmapped_count/prices_df.height)*100:.2f}%)")
     
     if unmapped_count == 0:
-        print("\n✅ SUCCESS: 100% of the price data perfectly maps to our stations list!")
+        print("\n[SUCCESS] 100% of the price data perfectly maps to our stations list!")
     else:
-        print("\n⚠️ WARNING: Some price changes belong to stations that are no longer in the latest stations list.")
+        print("\n[WARNING] Some price changes belong to stations that are no longer in the latest stations list.")
         print("This is normal for historical data (stations close down). We can easily filter these out.")
 
 if __name__ == "__main__":

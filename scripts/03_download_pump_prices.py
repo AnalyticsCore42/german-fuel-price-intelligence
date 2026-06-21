@@ -75,10 +75,10 @@ def download_csv(session: requests.Session, url: str, max_retries: int = 3) -> s
         except (requests.ConnectionError, requests.Timeout) as e:
             if attempt < max_retries:
                 wait = 5 * attempt
-                print(f"  ⚠ Connection error (attempt {attempt}/{max_retries}), retrying in {wait}s...")
+                print(f"  [WARNING] Connection error (attempt {attempt}/{max_retries}), retrying in {wait}s...")
                 time.sleep(wait)
             else:
-                print(f"  ✗ Failed after {max_retries} attempts: {e}")
+                print(f"  [ERROR] Failed after {max_retries} attempts: {e}")
                 raise
 
 
@@ -186,7 +186,7 @@ def download_prices(session: requests.Session, base_url: str):
     today = date.today()
     if last_successful_date:
         delay_days = (today - last_successful_date).days
-        print(f"\n📊 DATA FRESHNESS REPORT:")
+        print(f"\nDATA FRESHNESS REPORT:")
         print(f"Current System Date:  {today}")
         print(f"Last Available Data:  {last_successful_date}")
         if delay_days == 0:

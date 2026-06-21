@@ -1166,7 +1166,8 @@ with tab1:
         st.plotly_chart(fig, use_container_width=True)
 
         if corr_val != 0.0:
-            st.markdown(f"<div style='text-align:right; font-size:0.85rem; color:#8892A4;'>Pearson Correlation (2-day lag): <strong>{corr_val*100:.1f}%</strong></div>", unsafe_allow_html=True)
+            corr_label = "Pearson Correlation (2-day lag):" if lang == "en" else "Pearson-Korrelation (2 Tage Lag):"
+            st.markdown(f"<div style='text-align:right; font-size:0.85rem; color:#8892A4;'>{corr_label} <strong>{corr_val*100:.1f}%</strong></div>", unsafe_allow_html=True)
             
         if show_tax_trend:
             st.markdown(f"#### {t('tax_burden_title')}")
@@ -1178,20 +1179,21 @@ with tab1:
             fig_trend = go.Figure()
             fig_trend.add_trace(go.Scatter(
                 x=df["date"], y=tax_pct_series,
-                name="Daily Tax %",
+                name="Daily Tax %" if lang == "en" else "Täglicher Steueranteil %",
                 mode="lines",
                 line=dict(color="rgba(148, 163, 184, 0.3)", width=1),
             ))
             fig_trend.add_trace(go.Scatter(
                 x=df["date"], y=rolling_avg,
-                name="90-Day Trend",
+                name="90-Day Trend" if lang == "en" else "90-Tage-Trend",
                 mode="lines",
                 line=dict(color="#3B82F6", width=3), # Blue
             ))
             fig_trend = add_discount_bands(fig_trend)
             # Add horizontal line for 50%
+            threshold_label = " 50% Threshold" if lang == "en" else " 50% Grenze"
             fig_trend.add_hline(y=50, line_dash="dot", line_color=BLUE, line_width=1,
-                   annotation_text=" 50% Threshold", annotation_font_color=BLUE)
+                   annotation_text=threshold_label, annotation_font_color=BLUE)
             fig_trend.update_layout(**PLOT_LAYOUT, height=350, yaxis_title=t("tax_percent"), yaxis_ticksuffix="%")
             st.plotly_chart(fig_trend, use_container_width=True)
 
@@ -1298,7 +1300,7 @@ with tab2:
         )
     with c_opts:
         normalize_opt   = st.checkbox("Normalized" if lang == "en" else "Normalisiert", value=True,
-                                       help="Subtract pre-event mean so all events start at 0." if lang == "en" else "Subrahiere den Vor-Ereignis-Mittelwert.")
+                                       help="Subtract pre-event mean so all events start at 0." if lang == "en" else "Mittelwert vor dem Ereignis abziehen, so dass alle Kurven bei 0 starten.")
         show_milestones = st.checkbox("Milestones" if lang == "en" else "Meilensteine", value=True,
                                        help="Show official legislative dates as vertical markers." if lang == "en" else "Offizielle Gesetzgebungsdaten als Markierungen anzeigen.")
 
@@ -1341,7 +1343,7 @@ with tab2:
         # t=0 line
         fig_event.add_vline(
             x=0, line_dash="dash", line_color="rgba(136,146,164,0.75)", line_width=2,
-            annotation_text="Tax change effective →" if lang == "en" else "Steuerchange wirksam →",
+            annotation_text="Tax change effective →" if lang == "en" else "Steueränderung wirksam →",
             annotation_position="top right",
             annotation_font=dict(color="#8892A4", size=10)
         )
@@ -1495,6 +1497,34 @@ with tab3:
 
     if primary_stats is not None:
         st.info(f"**{t('lowest_info')}:** {best_h_overall:02d}:00 (≈€{(max_overall - min_overall):.2f}/L {t('below_peak')} {worst_h_overall:02d}:00). {t('per_tank')} ~**€{50*(max_overall-min_overall):.1f}**.")
+
+        # Legislative context callout (KPAnG 12:00 PM regulation)
+        if lang == "en":
+            st.markdown(
+                "<div style='background-color:#121929; border: 1px solid #1E293B; border-radius: 6px; padding: 16px; margin-top: 15px; font-size:0.85rem; color:#E8EAF0;'>"
+                "<strong>Regulatory Context (12:00 PM Price Regulation):</strong><br>"
+                "On <strong>April 1, 2026</strong>, the <em>Kraftstoffpreisanpassungsgesetz</em> (KPAnG) took effect. "
+                "Stations are legally restricted to increasing prices only once a day, exactly at 12:00 noon. Price decreases remain unrestricted at any time.<br><br>"
+                "<ul>"
+                "<li><strong>Before April 2026:</strong> Prices fluctuated freely hourly, with multiple daily peaks and troughs.</li>"
+                "<li><strong>After April 2026:</strong> A single, sharp price hike occurs at 12:00 PM, followed by a continuous downward drift. This explains why the late morning (e.g., 10:00 AM) is often the cheapest point as stations aggressively undercut each other right before the noon reset.</li>"
+                "</ul>"
+                "</div>",
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                "<div style='background-color:#121929; border: 1px solid #1E293B; border-radius: 6px; padding: 16px; margin-top: 15px; font-size:0.85rem; color:#E8EAF0;'>"
+                "<strong>Regulatorischer Hintergrund (12-Uhr-Preisregelung):</strong><br>"
+                "Am <strong>1. April 2026</strong> trat das <em>Kraftstoffpreisanpassungsgesetz</em> (KPAnG) in Kraft. "
+                "Seitdem dürfen Tankstellen ihre Preise nur noch einmal täglich um genau 12:00 Uhr mittags erhöhen. Preissenkungen sind weiterhin jederzeit unbeschränkt möglich.<br><br>"
+                "<ul>"
+                "<li><strong>Vor April 2026:</strong> Preise schwankten stündlich frei mit mehreren Auf- und Abwärtswellen am Tag.</li>"
+                "<li><strong>Nach April 2026:</strong> Ein einziger, steiler Preissprung um 12:00 Uhr, gefolgt von einer kontinuierlichen Preissenkung. Dies erklärt, warum die späten Vormittagsstunden (z.B. 10:00 Uhr) oft die günstigsten sind — Tankstellen unterbieten sich gegenseitig bis kurz vor dem Mittags-Reset.</li>"
+                "</ul>"
+                "</div>",
+                unsafe_allow_html=True
+            )
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TAB 4: Brand Comparison
