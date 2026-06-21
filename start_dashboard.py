@@ -13,7 +13,7 @@ if __name__ == "__main__":
     project_dir = Path(__file__).parent
     app_path = project_dir / "ui" / "04_app.py"
     
-    print("🚀 Starting Streamlit Dashboard from Python...")
+    print("Starting Streamlit Dashboard from Python...")
     print(f"Target App: {app_path}")
     print("Address:    http://localhost:8501")
     print("=" * 50)
@@ -25,7 +25,8 @@ if __name__ == "__main__":
             "-m", "streamlit", "run",
             str(app_path),
             "--server.port", "8501",
-            "--server.address", "localhost"
+            "--server.address", "localhost",
+            "--server.headless", "false"
         ])
     except KeyboardInterrupt:
-        print("\n👋 Dashboard stopped gracefully.")
+        print("\nDashboard stopped gracefully.")

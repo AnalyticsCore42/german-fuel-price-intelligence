@@ -39,3 +39,10 @@ env/
 # Large files
 data/tankerkoenig/
 data/tankerkoenig-repo/
+
+# OS-specific metadata
+.DS_Store
+._*
+data/**/._*
+**/._*
+
