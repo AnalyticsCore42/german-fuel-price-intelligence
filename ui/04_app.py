@@ -573,6 +573,21 @@ with st.sidebar:
 
     st.markdown(f"## {t('app_short')}")
     st.markdown(f"<div style='color:#8892A4;font-size:0.8rem;margin-bottom:16px;'>{t('app_subtitle')}</div>", unsafe_allow_html=True)
+
+    # Pre-load data with 1-day smoothing to extract min/max dates for header and range slider
+    df_temp = load_data(smoothing_days=1)
+    raw_min = df_temp["date"].min()
+    raw_max = df_temp["date"].max()
+    min_d = raw_min.to_python() if hasattr(raw_min, 'to_python') else raw_min
+    max_d = raw_max.to_python() if hasattr(raw_max, 'to_python') else raw_max
+
+    st.markdown(
+        f"<div style='background-color:#121929; border: 1px solid #1E293B; border-radius: 4px; padding: 10px; margin-bottom:15px; font-size:0.8rem; color:#E8EAF0;'>"
+        f"<strong>App Version:</strong> v1.1.0<br>"
+        f"<strong>Data Through:</strong> {max_d.strftime('%Y-%m-%d')}"
+        f"</div>",
+        unsafe_allow_html=True
+    )
     st.divider()
 
     smoothing_options = {
@@ -590,11 +605,6 @@ with st.sidebar:
     )
 
     df_full = load_data(smoothing_days=smoothing_days)
-    # Polars 1.x returns a native Python date scalar directly — no .to_python() needed
-    raw_min = df_full["date"].min()
-    raw_max = df_full["date"].max()
-    min_d = raw_min.to_python() if hasattr(raw_min, 'to_python') else raw_min
-    max_d = raw_max.to_python() if hasattr(raw_max, 'to_python') else raw_max
 
     date_range = st.slider(
         t("date_range"),
