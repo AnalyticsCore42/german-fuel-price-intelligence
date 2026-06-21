@@ -90,31 +90,36 @@ st.markdown("""
     .kpi-subtitle   { font-size: 0.75rem; color: #6b7280; margin-top: 6px; }
 
     /* ── Styled Selectboxes / Dropdowns ── */
-    select, div[data-testid="stSelectbox"] > div {
-        background-color: #121929 !important;
-        border: 1px solid #2A3347 !important;
-        color: #E8EAF0 !important;
+    select {
+        background-color: #1e2433 !important;
+        border: 1px solid #2d3748 !important;
+        color: #e2e8f0 !important;
+        border-radius: 6px !important;
+        padding: 6px 32px 6px 10px !important;
+        appearance: none !important;
+        -webkit-appearance: none !important;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E") !important;
+        background-repeat: no-repeat !important;
+        background-position: right 10px center !important;
+        width: 100% !important;
+        cursor: pointer !important;
+    }
+    div[data-testid="stSelectbox"] > div {
+        background-color: #1e2433 !important;
+        border: 1px solid #2d3748 !important;
+        color: #e2e8f0 !important;
         border-radius: 8px !important;
-        transition: border-color 0.2s, box-shadow 0.2s !important;
-    }
-    select:hover, div[data-testid="stSelectbox"] > div:hover {
-        border-color: rgba(245, 166, 35, 0.4) !important;
-    }
-    select:focus, div[data-testid="stSelectbox"] > div:focus-within {
-        border-color: #F5A623 !important;
-        box-shadow: 0 0 0 1px #F5A623 !important;
-        outline: none !important;
     }
     div[data-baseweb="select"] {
-        background-color: #121929 !important;
+        background-color: #1e2433 !important;
     }
     ul[role="listbox"] {
-        background-color: #121929 !important;
-        border: 1px solid #2A3347 !important;
+        background-color: #1e2433 !important;
+        border: 1px solid #2d3748 !important;
         border-radius: 8px !important;
     }
     li[role="option"] {
-        color: #E8EAF0 !important;
+        color: #e2e8f0 !important;
     }
     li[role="option"]:hover, li[role="option"][aria-selected="true"] {
         background-color: rgba(245, 166, 35, 0.15) !important;
@@ -147,15 +152,18 @@ PLOT_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
     font=dict(family="Inter", color="#8892A4"),
-    margin=dict(l=10, r=10, t=40, b=70), # increased bottom margin for horizontal legend
+    margin=dict(l=10, r=10, t=40, b=90), # increased bottom margin for horizontal legend with breathing room
     hovermode="x unified",
     hoverlabel=dict(bgcolor="#121929", bordercolor="#2A3347", font_size=13),
     legend=dict(
         orientation="h",
         yanchor="top",
-        y=-0.15,
+        y=-0.18, # positioned lower below chart
         xanchor="left",
         x=0,
+        font=dict(size=12, color="#cbd5e1"), # larger, higher contrast text
+        itemwidth=40, # wider color swatch
+        tracegroupgap=0,
         bgcolor="rgba(0,0,0,0)",
         bordercolor="rgba(0,0,0,0)"
     ),
@@ -163,6 +171,9 @@ PLOT_LAYOUT = dict(
     xaxis=dict(gridcolor="rgba(255,255,255,0.05)", showline=False),
     yaxis=dict(gridcolor="rgba(255,255,255,0.05)", showline=False),
 )
+
+# Global configuration to hide the Plotly modebar in Streamlit
+PLOT_CONFIG = {'displayModeBar': False}
 
 ACCENT      = "#F5A623"   # amber / energy
 ACCENT_ALT  = "#22C55E"   # green / reference
@@ -835,10 +846,21 @@ def add_discount_bands(fig):
         if x0 <= visible_max and x1 >= visible_min:
             fig.add_vrect(
                 x0=x0, x1=x1, fillcolor=color, opacity=1,
-                layer="below", line_width=1, line_color="rgba(245,166,35,0.3)",
-                annotation_text=label,
-                annotation_position="top left",
-                annotation_font=dict(color="#F5A623", size=11),
+                layer="below", line_width=1, line_color="rgba(245,166,35,0.3)"
+            )
+            # Clamp the horizontal start position to visible area and enable axis clipping
+            anno_x = max(x0, visible_min)
+            fig.add_annotation(
+                x=anno_x,
+                y=0.98,
+                xref="x",
+                yref="paper",
+                text=label,
+                showarrow=False,
+                xanchor="left",
+                yanchor="top",
+                font=dict(color="#F5A623", size=11),
+                cliponaxis=True
             )
     return fig
 
@@ -1213,7 +1235,7 @@ with tab1:
         # Determine max Y axis to keep charts stable
         max_y = df[p_col].max() * 1.1
         fig.update_layout(**PLOT_LAYOUT, height=480, yaxis_title="€ / Liter", yaxis_range=[0, max_y])
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config=PLOT_CONFIG)
 
 
             
@@ -1243,7 +1265,7 @@ with tab1:
             fig_trend.add_hline(y=50, line_dash="dot", line_color=BLUE, line_width=1,
                    annotation_text=threshold_label, annotation_font_color=BLUE)
             fig_trend.update_layout(**PLOT_LAYOUT, height=350, yaxis_title=t("tax_percent"), yaxis_ticksuffix="%")
-            st.plotly_chart(fig_trend, use_container_width=True)
+            st.plotly_chart(fig_trend, use_container_width=True, config=PLOT_CONFIG)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TAB 2: Net Product Spread
@@ -1269,7 +1291,7 @@ with tab2:
                    annotation_text=f" {t('historical_avg')}: €{baseline:.3f}", annotation_font_color=BLUE)
     fig2 = add_discount_bands(fig2)
     fig2.update_layout(**PLOT_LAYOUT, height=400, yaxis_title=f"{t('net_spread')} (€/L)")
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig2, use_container_width=True, config=PLOT_CONFIG)
 
     # Sub-metrics below chart
     c1, c2, c3 = st.columns(3)
@@ -1310,7 +1332,7 @@ with tab2:
             barmode="group",
             yaxis_title="€ / Liter",
         )
-        st.plotly_chart(fig_pass, use_container_width=True)
+        st.plotly_chart(fig_pass, use_container_width=True, config=PLOT_CONFIG)
 
         table_rows = []
         for row in pass_rows:
@@ -1429,7 +1451,7 @@ with tab2:
             "showlegend": False,
         }
         fig_event.update_layout(**event_layout)
-        st.plotly_chart(fig_event, use_container_width=True)
+        st.plotly_chart(fig_event, use_container_width=True, config=PLOT_CONFIG)
 
         # ── Auto-generated interpretation: compute the numbers, show the verdict ──
         if not group.empty and normalize_opt:
@@ -1541,7 +1563,7 @@ with tab3:
 
     fig3.update_layout(**PLOT_LAYOUT, height=400, xaxis_title=t("hour_of_day"), yaxis_title=t("avg_pump_price"))
     fig3.update_xaxes(tickmode="linear", dtick=2, gridcolor="rgba(255,255,255,0.05)")
-    st.plotly_chart(fig3, use_container_width=True)
+    st.plotly_chart(fig3, use_container_width=True, config=PLOT_CONFIG)
 
     if primary_stats is not None:
         st.info(f"**{t('lowest_info')}:** {best_h_overall:02d}:00 (≈€{(max_overall - min_overall):.2f}/L {t('below_peak')} {worst_h_overall:02d}:00). {t('per_tank')} ~**€{50*(max_overall-min_overall):.1f}**.")
@@ -1665,7 +1687,7 @@ with tab_brand:
                 title=t("brand_margin_trend"),
                 yaxis_title="Margin vs. National Avg (ct/L)" if lang == "en" else "Spanne vs. Bundesschnitt (ct/L)",
             )
-            st.plotly_chart(fig_brand, use_container_width=True)
+            st.plotly_chart(fig_brand, use_container_width=True, config=PLOT_CONFIG)
 
             _, event_start, planned_end = policy_windows[selected_policy]
             brand_rows = calculate_brand_policy_rows(
@@ -1693,7 +1715,7 @@ with tab_brand:
                     yaxis_title=f"{t('delta_margin')} (€/L)",
                     showlegend=False,
                 )
-                st.plotly_chart(fig_brand_delta, use_container_width=True)
+                st.plotly_chart(fig_brand_delta, use_container_width=True, config=PLOT_CONFIG)
 
                 table_rows = []
                 for row in brand_rows:
@@ -1775,7 +1797,7 @@ with tab4:
                 **PLOT_LAYOUT, height=420, showlegend=False,
                 yaxis_title="Retail Margin vs. National Avg (ct/L)" if lang == "en" else "Retailmarge vs. Bundesschnitt (ct/L)",
             )
-            st.plotly_chart(fig_reg_bar, use_container_width=True)
+            st.plotly_chart(fig_reg_bar, use_container_width=True, config=PLOT_CONFIG)
 
             # ── KPI metrics ──
             c1, c2, c3 = st.columns(3)
@@ -1843,7 +1865,7 @@ with tab4:
                     **PLOT_LAYOUT, height=400,
                     yaxis_title="Retail Margin vs. Avg (ct/L)" if lang == "en" else "Retailmarge vs. Schnitt (ct/L)",
                 )
-                st.plotly_chart(fig_reg_ts, use_container_width=True)
+                st.plotly_chart(fig_reg_ts, use_container_width=True, config=PLOT_CONFIG)
         else:
             st.info(t("regional_data_missing"))
     else:
