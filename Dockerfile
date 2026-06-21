@@ -1,5 +1,5 @@
 # 1. Use an official, lightweight Python base image
-FROM python:3.9-slim
+FROM python:3.12-slim
 
 # 2. Set the working directory in the container
 WORKDIR /app
@@ -7,12 +7,14 @@ WORKDIR /app
 # 3. Prevent Python from writing .pyc files and enable unbuffered logging
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app/src
 
 # 4. Copy requirements and install python packages
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. Copy the UI source files and only the aggregated Parquet datasets
+# 5. Copy the UI source files, src packages, and only the aggregated Parquet datasets
+COPY src/ ./src/
 COPY ui/ ./ui/
 COPY data/*.parquet ./data/
 

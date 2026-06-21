@@ -1,16 +1,17 @@
 """
-Script: 01_update_brent_crude.py
+Module: update_brent_crude.py
 Description: Fetches the latest macroeconomic data (Brent Crude and EUR/USD) 
              from Yahoo Finance and updates the existing processed baseline parquet file.
-Inputs:
-    - ../data/processed_macro_baseline_1999_2026.parquet
-Outputs:
-    - Overwrites the parquet file with appended recent data.
+             Includes robust retry logic and error handling.
 """
 
 import polars as pl
 import requests
+from requests.exceptions import RequestException
 import os
+import time
+import logging
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -18,23 +19,52 @@ from pathlib import Path
 # 1. SETUP & CONFIGURATION
 # ==========================================
 
-SCRIPT_DIR = Path(__file__).parent
-PARQUET_FILE = str(SCRIPT_DIR.parent / "data" / "processed_macro_baseline.parquet")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("gasprice.update_brent_crude")
+
+# Resolve PARQUET_FILE relative to project root
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PARQUET_FILE = str(PROJECT_ROOT / "data" / "processed_macro_baseline.parquet")
 BARREL_TO_LITER = 159.0
 
 # ==========================================
 # 2. DATA PIPELINE & POLARS PROCESSING
 # ==========================================
 
+def fetch_with_retry(url, headers, max_retries=3, backoff_factor=2):
+    """
+    Perform requests.get with timeout and exponential backoff retry.
+    Propagates request exceptions after exhaustion.
+    """
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info(f"Fetching URL (attempt {attempt}/{max_retries}): {url}")
+            res = requests.get(url, headers=headers, timeout=15)
+            res.raise_for_status()
+            return res.json()
+        except RequestException as e:
+            logger.warning(f"Transient network error on attempt {attempt}: {e}")
+            if attempt == max_retries:
+                logger.error(f"Failed to fetch {url} after {max_retries} attempts.")
+                raise e
+            time.sleep(backoff_factor ** attempt)
+
 def fetch_yahoo_data(ticker, start_date, end_date):
+    """
+    Fetch historical daily data for a given ticker from Yahoo Finance.
+    """
     start_ts = int(datetime.combine(start_date, datetime.min.time()).timestamp())
     end_ts = int(datetime.combine(end_date, datetime.min.time()).timestamp())
     
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?period1={start_ts}&period2={end_ts}&interval=1d"
     headers = {'User-Agent': 'Mozilla/5.0'}
     
-    res = requests.get(url, headers=headers).json()
-    
+    try:
+        res = fetch_with_retry(url, headers=headers)
+    except RequestException as e:
+        logger.error(f"Network failure fetching {ticker}: {e}")
+        raise e
+        
     try:
         result = res['chart']['result'][0]
         timestamps = result['timestamp']
@@ -50,20 +80,20 @@ def fetch_yahoo_data(ticker, start_date, end_date):
             "date": list(valid_dates),
             "value": list(valid_closes)
         })
-    except Exception as e:
-        print(f"Error parsing Yahoo data for {ticker}: {e}")
-        return pl.DataFrame(schema={"date": pl.Date, "value": pl.Float64})
+    except (KeyError, TypeError, IndexError, json.JSONDecodeError) as e:
+        logger.error(f"Malformed response format from Yahoo Finance for ticker {ticker}: {e}")
+        raise e
 
 def update_macro_data():
     if not os.path.exists(PARQUET_FILE):
-        print(f"Error: {PARQUET_FILE} not found. Run 01_validate_macro_data.py first.")
-        return
+        logger.error(f"Parquet baseline file {PARQUET_FILE} not found. Ensure macro baseline has been generated.")
+        raise FileNotFoundError(f"{PARQUET_FILE} not found.")
         
-    print("Loading existing baseline data...")
+    logger.info("Loading existing baseline data...")
     baseline_df = pl.read_parquet(PARQUET_FILE)
     
     max_date = baseline_df["date"].max()
-    print(f"Existing data goes up to: {max_date}")
+    logger.info(f"Existing data goes up to: {max_date}")
     
     # Overwrite the last 5 days to account for weekends and lag/late reporting
     start_fetch_date = max_date - timedelta(days=5)
@@ -71,14 +101,14 @@ def update_macro_data():
     
     start_str = start_fetch_date.strftime("%Y-%m-%d")
     end_str = end_fetch_date.strftime("%Y-%m-%d")
-    print(f"Fetching updates from Yahoo Finance: {start_str} to {end_str}...")
+    logger.info(f"Fetching updates from Yahoo Finance: {start_str} to {end_str}...")
     
     # Fetch data directly from Yahoo Finance JSON API
     brent_new = fetch_yahoo_data("BZ=F", start_fetch_date, end_fetch_date).rename({"value": "DCOILBRENTEU"})
     eurusd_new = fetch_yahoo_data("EURUSD=X", start_fetch_date, end_fetch_date).rename({"value": "DEXUSEU"})
     
     if brent_new.is_empty() or eurusd_new.is_empty():
-        print("No new trading data available from Yahoo Finance yet. Markets might have been closed.")
+        logger.info("No new trading data available from Yahoo Finance yet. Markets might have been closed.")
         return
     
     # Align the new timelines on a daily basis
@@ -112,8 +142,8 @@ def update_macro_data():
         .alias("Raw_Material_EUR_per_Liter")
     )
     
-    print("\n--- New Data Fetched (Yahoo Finance) ---")
-    print(new_merged_df)
+    logger.info("\n--- New Data Fetched (Yahoo Finance) ---")
+    logger.info(new_merged_df)
     
     # Filter old baseline to remove the days we are overwriting
     baseline_df = baseline_df.filter(pl.col("date") < start_fetch_date)
@@ -122,8 +152,8 @@ def update_macro_data():
     updated_baseline_df = pl.concat([baseline_df, new_merged_df]).sort("date")
     updated_baseline_df.write_parquet(PARQUET_FILE)
     
-    print(f"\nSuccessfully appended/updated {new_merged_df.height} days in the baseline.")
-    print(f"The baseline is now fully updated up to {updated_baseline_df['date'].max()}.")
+    logger.info(f"Successfully appended/updated {new_merged_df.height} days in the baseline.")
+    logger.info(f"The baseline is now fully updated up to {updated_baseline_df['date'].max()}.")
 
 if __name__ == "__main__":
     update_macro_data()

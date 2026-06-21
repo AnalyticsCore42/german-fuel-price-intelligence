@@ -1,21 +1,17 @@
 """
-Script: 04_download_tankerkoenig.py
+Module: download_pump_prices.py
 Description: Resilient, idempotent downloader for Tankerkönig historical fuel price data.
              Downloads daily price CSVs and converts them to compressed Parquet on the fly.
              If interrupted, re-running the script skips already-downloaded days.
-Inputs:  ../.env (credentials)
-Outputs: ../data/tankerkoenig/prices/YYYY/YYYY-MM-DD.parquet
-         ../data/tankerkoenig/stations/latest-stations.parquet
-
-Memory Constraint: Each daily CSV (~25 MB, ~417k rows) is loaded, compressed, and freed
-                   before the next day is fetched. Peak RAM usage: ~50 MB.
 """
 
 import polars as pl
 import requests
+from requests.exceptions import RequestException
 import os
 import sys
 import time
+import logging
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -23,9 +19,11 @@ from pathlib import Path
 # 1. SETUP & CONFIGURATION
 # ==========================================
 
-SCRIPT_DIR = Path(__file__).parent
-PROJECT_DIR = SCRIPT_DIR.parent
-DATA_DIR = PROJECT_DIR / "data" / "tankerkoenig"
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("gasprice.download_pump_prices")
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = PROJECT_ROOT / "data" / "tankerkoenig"
 PRICES_DIR = DATA_DIR / "prices"
 STATIONS_DIR = DATA_DIR / "stations"
 
@@ -61,7 +59,7 @@ def log_info(msg: str):
 
 def load_env():
     """Load credentials from .env file."""
-    env_path = PROJECT_DIR / ".env"
+    env_path = PROJECT_ROOT / ".env"
     if not env_path.exists():
         log_error(f"{env_path} not found. Create it with TK_USER and TK_PASS.")
         sys.exit(1)
@@ -79,9 +77,9 @@ def load_env():
 # 3. DOWNLOAD ENGINE
 # ==========================================
 
-def download_csv(session: requests.Session, url: str, max_retries: int = 3) -> str | None:
+def download_csv(session: requests.Session, url: str, max_retries: int = 3, backoff_factor: int = 2) -> str | None:
     """
-    Downloads a CSV from the given URL with retry logic.
+    Downloads a CSV from the given URL with exponential backoff retry.
     Returns the raw text content, or None if the file doesn't exist (404).
     """
     for attempt in range(1, max_retries + 1):
@@ -91,15 +89,14 @@ def download_csv(session: requests.Session, url: str, max_retries: int = 3) -> s
                 return None
             resp.raise_for_status()
             return resp.text
-        except (requests.ConnectionError, requests.Timeout) as e:
+        except RequestException as e:
             if attempt < max_retries:
-                wait = 5 * attempt
+                wait = backoff_factor ** attempt
                 print(f"  {C_YELLOW}[▲] WARNING:{C_RESET} Connection error (attempt {attempt}/{max_retries}), retrying in {wait}s...")
                 time.sleep(wait)
             else:
                 print(f"  {C_RED}[✘] ERROR:{C_RESET} Failed after {max_retries} attempts: {e}")
                 raise
-
 
 def download_stations(session: requests.Session, base_url: str):
     """Download the latest stations metadata file."""
@@ -114,23 +111,30 @@ def download_stations(session: requests.Session, base_url: str):
     for d in [date.today(), date.today() - timedelta(days=1), date.today() - timedelta(days=2)]:
         url = f"{base_url}/stations/{d.year}/{d.month:02d}/{d.strftime('%Y-%m-%d')}-stations.csv"
         log_info(f"Trying stations file for {d}...")
-        csv_text = download_csv(session, url)
-        if csv_text:
-            break
+        try:
+            csv_text = download_csv(session, url)
+            if csv_text:
+                break
+        except RequestException:
+            continue
     else:
-        print(f"  {C_RED}[✘] ERROR:{C_RESET} Could not find a recent stations file. Skipping.")
+        log_error("Could not find a recent stations file. Skipping.")
         return
 
     # Parse with Polars — stations CSV has messy quoting due to JSON column
     from io import StringIO
-    df = pl.read_csv(
-        StringIO(csv_text),
-        infer_schema_length=10000,
-        ignore_errors=True,
-    )
+    try:
+        df = pl.read_csv(
+            StringIO(csv_text),
+            infer_schema_length=10000,
+            ignore_errors=True,
+        )
+    except Exception as e:
+        log_error(f"Failed to parse stations CSV file: {e}")
+        raise e
+
     df.write_parquet(output_path, compression="zstd")
     log_success(f"Stations saved: {output_path} ({df.height:,} stations, {output_path.stat().st_size / 1024:.0f} KB)")
-
 
 def download_prices(session: requests.Session, base_url: str):
     """Download daily price files for the configured date range."""
@@ -182,7 +186,12 @@ def download_prices(session: requests.Session, base_url: str):
 
             # Parse CSV → Parquet in one shot
             from io import StringIO
-            df = pl.read_csv(StringIO(csv_text), try_parse_dates=True)
+            try:
+                df = pl.read_csv(StringIO(csv_text), try_parse_dates=True)
+            except Exception as parse_err:
+                log_error(f"Failed to parse price CSV for {current}: {parse_err}")
+                raise parse_err
+                
             df.write_parquet(output_path, compression="zstd")
 
             size_kb = output_path.stat().st_size / 1024
@@ -190,10 +199,12 @@ def download_prices(session: requests.Session, base_url: str):
             last_successful_date = current
             print(f"  {C_GREEN}[✔] {progress} {current}:{C_RESET} {df.height:,} rows, {size_kb:.0f} KB")
 
+        except RequestException as e:
+            log_error(f"Network error downloading prices for {current}: {e}")
+            raise e
         except Exception as e:
-            failed += 1
-            failed_dates.append(str(current))
-            print(f"  {C_RED}[✘] {progress} {current}:{C_RESET} ERROR: {e}")
+            log_error(f"Format/disk error processing prices for {current}: {e}")
+            raise e
 
         current += timedelta(days=1)
 
@@ -215,15 +226,9 @@ def download_prices(session: requests.Session, base_url: str):
     else:
         print("No successful downloads found.")
 
-
-# ==========================================
-# 4. MAIN
-# ==========================================
-
 if __name__ == "__main__":
     user, password, base_url = load_env()
 
-    # Create a persistent session with auth — reuses TCP connections for speed
     session = requests.Session()
     session.auth = (user, password)
     session.headers.update({"User-Agent": "TankAnalysis/1.0"})
@@ -235,10 +240,8 @@ if __name__ == "__main__":
         print("Mode:   ⚡ TEST (3 days only)")
     print()
 
-    # Step 1: Stations metadata
     print("--- Downloading Stations Metadata ---")
     download_stations(session, base_url)
 
-    # Step 2: Daily prices
     print("\n--- Downloading Daily Prices ---")
     download_prices(session, base_url)

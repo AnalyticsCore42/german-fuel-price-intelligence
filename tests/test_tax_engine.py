@@ -1,27 +1,17 @@
 """
 Test Suite: test_tax_engine.py
-Tests the core tax deduction engine (scripts/02_tax_engine.py) which is the mathematical
+Tests the core tax deduction engine (gasprice.tax_engine) which is the mathematical
 foundation of every margin and spread calculation in the project.
 
 Run with:  pytest tests/ -v
-Coverage:  pytest tests/ --cov=scripts --cov-report=term-missing
-
-Priority: HIGH — wrong tax rates mean every downstream analysis is wrong.
+Coverage:  pytest tests/ --cov=gasprice --cov-report=term-missing
 """
 
-import sys
-from pathlib import Path
 from datetime import date
-
 import polars as pl
 import pytest
 
-# Add scripts/ to path so we can import directly
-sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
-from importlib import import_module
-tax_engine = import_module("02_tax_engine")
-calculate_net_price = tax_engine.calculate_net_price
-
+from gasprice.tax_engine import calculate_net_price
 
 # ==========================================
 # 1. HELPERS

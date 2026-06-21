@@ -11,6 +11,7 @@ import streamlit as st
 import polars as pl
 import plotly.graph_objects as go
 import os
+import json
 from math import erfc, sqrt
 from datetime import date, timedelta
 from pathlib import Path
@@ -209,287 +210,20 @@ POLICY_MILESTONES = {
     ],
 }
 
-TRANSLATIONS = {
-    "en": {
-        "language": "Language",
-        "app_short": "Fuel Prices",
-        "app_subtitle": "Germany Fuel Price Spread Analysis",
-        "date_range": "Date Range",
-        "date_range_help": "Filter all charts to this date window",
-        "fuel_type": "Fuel Type",
-        "tax_viz": "Tax Visualization (Tab 1)",
-        "tax_viz_help": "Visualize how taxes bridge the gap between raw material cost and the pump price.",
-        "hide_taxes": "Hide Taxes",
-        "taxes_combined": "Total Taxes (Combined)",
-        "taxes_detailed": "Taxes (Detailed Breakdown)",
-        "tax_trend": "Show Tax Burden Trend",
-        "tax_trend_help": "Show the percentage of pump price that goes to taxes.",
-        "data_sources": "Data: EIA · ECB · Tankerkoenig",
-        "main_title": "German Fuel Price — Net Product Spread Tracker",
-        "main_subtitle": "Where did the 2022 & 2026 fuel tax discounts actually go?",
-        "brent": "Brent Crude (EUR/L)",
-        "raw_material_cost": "Raw Material Cost",
-        "pump_price": "Pump Price",
-        "national_avg": "National Average",
-        "net_spread": "Net Product Spread",
-        "spread_delta_discount_1": "Spread Δ During Discount 1",
-        "pre_discount_compared": "365-day pre-tax baseline compared",
-        "spread_kpi_note": "After taxes, before refining/retail costs",
-        "tab_brent": "Brent vs Pump",
-        "tab_spread": "Net Product Spread",
-        "tab_rhythm": "Daily Rhythm",
-        "tab_brand": "Brand Comparison",
-        "tab_location": "Regional Pricing",
-        "brent_vs_pump_title": "Retail Pump Price vs. Raw Brent Crude",
-        "brent_vs_pump_note": "Gap = taxes + net product spread (incl. refining, logistics, retail margin).",
-        "spread_trace": "Net Product Spread",
-        "spread_hover": "Spread",
-        "total_taxes": "Total Taxes",
-        "vat": "Value Added Tax (VAT)",
-        "energy_tax": "Energy Tax",
-        "co2": "CO₂ Pricing",
-        "ebv": "EBV Contribution",
-        "spread_baseline_mode": "Spread Baseline Mode",
-        "brent_baseline": "Brent Crude (Total Spread over Crude)",
-        "refined_baseline": "Refined Fuel (Pure Retail Margin)",
-        "refining_layer": "Refining Margin (Crack Spread)",
-        "refining_trace": "Refining Crack Spread",
-        "retail_trace": "Net Retail Spread",
-        "retail_spread_title": "Isolated Net Retail Spread Over Time",
-        "retail_spread_note": "After stripping VAT, Energy Tax, CO₂, EBV, and the wholesale refined product price (including refining crack spreads), this is the pure retail and distribution spread. It contains local transport, station operating costs, marketing, and station brand profits.",
-        "tax_burden_title": "Tax Burden Trendline",
-        "procurement_smoothing": "Procurement Smoothing (Lag)",
-        "procurement_smoothing_help": "Smooth raw Brent and product prices using a rolling average to simulate refinery/retail inventory contracts and prevent daily spot spikes.",
-        "smooth_daily": "Daily Spot (No Smoothing)",
-        "smooth_weekly": "7-Day Rolling Average",
-        "smooth_biweekly": "14-Day Rolling Average (Standard)",
-        "smooth_monthly": "30-Day Rolling Average (Hedged)",
-        "tax_burden_note": "Percentage of pump price comprised of taxes (VAT, Energy Tax, CO₂, EBV), smoothed over 90 days.",
-        "tax_percent": "Taxes (% of Pump Price)",
-        "spread_title": "Isolated Net Product Spread Over Time",
-        "spread_note": "After stripping VAT, Energy Tax, CO₂, and EBV, this is the pump-price spread over Brent crude. It is not profit; it still contains refining, transport, retail costs, overhead, and profit.",
-        "historical_avg": "Historical avg",
-        "pre_discount_avg": "365-Day Pre-Tax Avg",
-        "during_discount_1": "During Discount 1",
-        "historical_range": "Historical Range",
-        "pass_title": "Fuel Tax Break Pass-Through",
-        "pass_note": "Compares the drop in pump prices during each tax-break period with the drop in taxes collected per liter. Commodity-price changes still affect the result, so this is a practical pass-through estimate, not a causal proof.",
-        "event": "Event",
-        "pump_drop": "Pump price drop",
-        "tax_drop": "Tax drop",
-        "spread_change": "Spread change",
-        "raw_change": "Brent change",
-        "pass_through": "Pass-through",
-        "comparison_window": "Comparison window",
-        "spread_baseline": "Spread baseline",
-        "event_study_title": "Event Study: Margins Trajectory Around Policy Shocks",
-        "event_study_note": "A dynamic Event Study mapping the daily trajectories of the Net Product Spread from Day -60 to Day +60 around each policy shock. Normalizing relative to the pre-event baseline isolates clean margins behavior.",
-        "event_window": "Timeline window (days before/after)",
-        "event_window_help": "Number of calendar days before and after each tax switch to map.",
-        "switch": "Switch",
-        "before": "Before",
-        "after": "After",
-        "n_days": "n days",
-        "pump_change": "Pump price change",
-        "tax_change": "Tax change",
-        "raw_adjusted_change": "Raw-adjusted price change",
-        "p_value": "p-value",
-        "evidence": "Evidence",
-        "strong": "strong",
-        "moderate": "moderate",
-        "weak": "weak",
-        "tax_break_on_2022": "Tax break starts / 2022",
-        "tax_break_off_2022": "Tax break ends / 2022",
-        "tax_break_on_2026": "Tax break starts / 2026",
-        "rhythm_title": "Average Price by Hour of Day",
-        "rhythm_note": "Hourly station-level averages are reconstructed from price-change logs by carrying each station's last known price forward. Compare timeframes to see when price levels actually sit low or high.",
-        "intraday_missing": "Intraday rhythm data is not generated yet. Run `python3 scripts/04_build_dashboard_dataset.py` once to create `data/processed_intraday.parquet`.",
-        "compare_timeframes": "Compare Timeframes",
-        "all_time": "All-Time Average (2021-2026)",
-        "last_7": "Last 7 Days",
-        "last_30": "Last 30 Days",
-        "discount_2022": "1st Fuel Discount (Jun-Aug 2022)",
-        "discount_2026": "2nd Fuel Discount (May-Jun 2026)",
-        "baseline_2021": "2021 Baseline",
-        "peak": "Peak",
-        "lowest": "Lowest",
-        "hour_of_day": "Hour of Day",
-        "avg_pump_price": "Avg Pump Price (€/L)",
-        "lowest_info": "Lowest hourly average (primary trend)",
-        "below_peak": "below the peak",
-        "per_tank": "Over 50L that is",
-        "brand_title": "Brand and Ownership Margin Comparison",
-        "brand_note": "Switch between customer-facing brand names and ownership groups. Brand-name view keeps all brands with at least 50 stations separate and rolls smaller brands into one Other bucket.",
-        "brand_data_missing": "Brand analysis data is not generated yet. Run `python3 scripts/04_build_dashboard_dataset.py` once to create `data/processed_brand_daily_margins.parquet`.",
-        "brand_level": "Comparison level",
-        "brand_level_brand": "Brand names (50+ stations)",
-        "brand_level_owner": "Ownership groups",
-        "brand_groups": "Groups to compare",
-        "brand_groups_help": "Defaults to the largest groups by station count. Add discount or premium child brands here to compare them directly.",
-        "policy_window": "Policy window",
-        "tankrabatt_1": "Tankrabatt 1 / 2022",
-        "tankrabatt_2": "Tankrabatt 2 / 2026",
-        "brand_margin_trend": "Net product spread by group",
-        "brand_delta_title": "Margin change during tax break vs. 365-day pre-tax baseline",
-        "brand_delta_note": "Positive values mean the group’s net product spread was higher during the tax break than its own year-long pre-event baseline.",
-        "group": "Group",
-        "stations": "Stations",
-        "baseline_margin": "Baseline margin",
-        "discount_margin": "Tax-break margin",
-        "delta_margin": "Margin delta",
-        "discount_price": "Tax-break pump price",
-        "location_title": "Dynamic Regional Pricing Analysis",
-        "location_note": "Pricing trends across Germany's 10 major postal zones (PLZ 0-9) mapped dynamically from raw station data.",
-        "cheapest_region": "Cheapest region baseline: ",
-        "regional_spread_title": "Regional Pricing Comparison",
-        "most_expensive": "Most Expensive Region",
-        "cheapest": "Cheapest Region",
-        "max_regional_premium": "Max Regional Spread (Peak vs Trough)",
-        "regional_tank_extra": "Cost Delta per 50L Tank (Peak vs Trough)",
-        "regional_dynamics": "Regional price variation",
-        "regional_data_missing": "Regional daily data has not been built yet. Please run python3 scripts/04_build_dashboard_dataset.py.",
-    },
-    "de": {
-        "language": "Sprache",
-        "app_short": "Tankpreise",
-        "app_subtitle": "Analyse der deutschen Kraftstoffpreis-Spanne",
-        "date_range": "Zeitraum",
-        "date_range_help": "Filtert alle Diagramme auf diesen Zeitraum",
-        "fuel_type": "Kraftstoffart",
-        "tax_viz": "Steueransicht (Tab 1)",
-        "tax_viz_help": "Zeigt, wie Steuern die Lücke zwischen Rohstoffkosten und Zapfsäulenpreis erklären.",
-        "hide_taxes": "Steuern ausblenden",
-        "taxes_combined": "Steuern gesamt",
-        "taxes_detailed": "Steuern im Detail",
-        "tax_trend": "Steueranteil anzeigen",
-        "tax_trend_help": "Zeigt, welcher Anteil des Zapfsäulenpreises auf Steuern entfällt.",
-        "data_sources": "Daten: EIA · EZB · Tankerkönig",
-        "main_title": "Deutsche Tankpreise — Netto-Produktspanne",
-        "main_subtitle": "Wo sind die Tankrabatte 2022 und 2026 tatsächlich angekommen?",
-        "brent": "Brent-Rohöl (EUR/L)",
-        "raw_material_cost": "Rohstoffkosten",
-        "pump_price": "Zapfsäulenpreis",
-        "national_avg": "Bundesweiter Durchschnitt",
-        "net_spread": "Netto-Produktspanne",
-        "spread_delta_discount_1": "Spannenänderung im Tankrabatt 1",
-        "pre_discount_compared": "Vergleich mit 365-Tage-Basis vor Steueränderung",
-        "spread_kpi_note": "Nach Steuern, vor Raffinerie-/Handelskosten",
-        "tab_brent": "Brent vs. Zapfsäule",
-        "tab_spread": "Netto-Produktspanne",
-        "tab_rhythm": "Tagesrhythmus",
-        "tab_brand": "Markenvergleich",
-        "tab_location": "Regionale Preise",
-        "brent_vs_pump_title": "Zapfsäulenpreis vs. Brent-Rohöl",
-        "brent_vs_pump_note": "Differenz = Steuern + Netto-Produktspanne (inkl. Raffination, Logistik, Handelsmarge).",
-        "spread_trace": "Netto-Produktspanne",
-        "spread_hover": "Spanne",
-        "total_taxes": "Steuern gesamt",
-        "vat": "Mehrwertsteuer",
-        "energy_tax": "Energiesteuer",
-        "co2": "CO₂-Preis",
-        "ebv": "EBV-Beitrag",
-        "spread_baseline_mode": "Spannen-Basislinie",
-        "brent_baseline": "Brent-Rohöl (Gesamtspanne über Rohöl)",
-        "refined_baseline": "Raffiniertes Produkt (Reine Retailmarge)",
-        "refining_layer": "Raffineriemarge (Crack-Spread)",
-        "refining_trace": "Raffinerie-Crack-Spread",
-        "retail_trace": "Netto-Retailspanne",
-        "retail_spread_title": "Isolierte Netto-Retailspanne im Zeitverlauf",
-        "retail_spread_note": "Nach Abzug von MwSt., Energiesteuer, CO₂, EBV und dem Großhandels-Einkaufspreis (inkl. Raffinerie-Crack-Spannen) bleibt die reine Vertriebs- und Tankstellen-Marge. Sie enthält den lokalen Transport, Stations-Betriebskosten, Marketing und Gewinne der Tankstellen-Marken.",
-        "tax_burden_title": "Entwicklung der Steuerbelastung",
-        "procurement_smoothing": "Beschaffungs-Glättung (Lag)",
-        "procurement_smoothing_help": "Glättet Brent- und Produktpreise mit einem gleitenden Durchschnitt, um Einkaufsverträge und Lagerbestände zu simulieren und tägliche Spotpreis-Spitzen zu dämpfen.",
-        "smooth_daily": "Täglicher Spotpreis (Keine Glättung)",
-        "smooth_weekly": "7-Tage gleitender Durchschnitt",
-        "smooth_biweekly": "14-Tage gleitender Durchschnitt (Standard)",
-        "smooth_monthly": "30-Tage gleitender Durchschnitt (Gesichert)",
-        "tax_burden_note": "Anteil des Zapfsäulenpreises, der aus Steuern besteht (MwSt., Energiesteuer, CO₂, EBV), geglättet über 90 Tage.",
-        "tax_percent": "Steuern (% des Zapfsäulenpreises)",
-        "spread_title": "Isolierte Netto-Produktspanne im Zeitverlauf",
-        "spread_note": "Nach Abzug von MwSt., Energiesteuer, CO₂ und EBV bleibt die Spanne des Zapfsäulenpreises über Brent. Das ist kein Gewinn; enthalten sind weiterhin Raffinerie, Transport, Stationsbetrieb, Gemeinkosten und Gewinn.",
-        "historical_avg": "Historischer Durchschnitt",
-        "pre_discount_avg": "365-Tage-Durchschnitt vor Steueränderung",
-        "during_discount_1": "Während Tankrabatt 1",
-        "historical_range": "Historische Spanne",
-        "pass_title": "Weitergabe des Tankrabatts",
-        "pass_note": "Vergleicht den Rückgang der Zapfsäulenpreise während des Tankrabatts mit dem Rückgang der erhobenen Steuern pro Liter. Rohstoffpreisänderungen beeinflussen das Ergebnis, daher ist dies eine praktische Weitergabe-Schätzung, kein kausaler Beweis.",
-        "event": "Ereignis",
-        "pump_drop": "Preisrückgang",
-        "tax_drop": "Steuerrückgang",
-        "spread_change": "Spannenänderung",
-        "raw_change": "Brent-Änderung",
-        "pass_through": "Weitergabe",
-        "comparison_window": "Vergleichszeitraum",
-        "spread_baseline": "Spannen-Basislinie",
-        "event_study_title": "Ereignisstudie: Verlauf der Margen um Steuerschocks",
-        "event_study_note": "Eine dynamische Ereignisstudie, die den täglichen Verlauf der Netto-Produktspanne von Tag -60 bis Tag +60 um jeden politischen Steuerschock abbildet. Die Normalisierung relativ zur Vor-Ereignis-Basislinie isoliert das saubere Spannenverhalten.",
-        "event_window": "Zeitfenster (Tage davor/danach)",
-        "event_window_help": "Anzahl der Kalendertage vor und nach jedem Steuerschalter für die Darstellung.",
-        "switch": "Schalter",
-        "before": "Vorher",
-        "after": "Nachher",
-        "n_days": "n Tage",
-        "pump_change": "Preisänderung",
-        "tax_change": "Steueränderung",
-        "raw_adjusted_change": "Rohstoffbereinigte Preisänderung",
-        "p_value": "p-Wert",
-        "evidence": "Evidenz",
-        "strong": "stark",
-        "moderate": "mittel",
-        "weak": "schwach",
-        "tax_break_on_2022": "Tankrabatt startet / 2022",
-        "tax_break_off_2022": "Tankrabatt endet / 2022",
-        "tax_break_on_2026": "Tankrabatt startet / 2026",
-        "rhythm_title": "Durchschnittspreis nach Tagesstunde",
-        "rhythm_note": "Stündliche Stationsdurchschnitte werden aus Preisänderungsprotokollen rekonstruiert, indem der letzte bekannte Stationspreis fortgeschrieben wird. So sieht man, wann das Preisniveau wirklich niedrig oder hoch liegt.",
-        "intraday_missing": "Die Intraday-Daten wurden noch nicht erzeugt. Führe einmal `python3 scripts/04_build_dashboard_dataset.py` aus, um `data/processed_intraday.parquet` zu erstellen.",
-        "compare_timeframes": "Zeiträume vergleichen",
-        "all_time": "Gesamtdurchschnitt (2021-2026)",
-        "last_7": "Letzte 7 Tage",
-        "last_30": "Letzte 30 Tage",
-        "discount_2022": "1. Tankrabatt (Jun-Aug 2022)",
-        "discount_2026": "2. Tankrabatt (Mai-Jun 2026)",
-        "baseline_2021": "Basisjahr 2021",
-        "peak": "Hochpunkt",
-        "lowest": "Tiefpunkt",
-        "hour_of_day": "Tagesstunde",
-        "avg_pump_price": "Durchschn. Zapfsäulenpreis (€/L)",
-        "lowest_info": "Niedrigster Stundendurchschnitt (primäre Linie)",
-        "below_peak": "unter dem Hochpunkt",
-        "per_tank": "Bei 50L entspricht das",
-        "brand_title": "Vergleich nach Marke und Eigentümergruppe",
-        "brand_note": "Wechsle zwischen kundenseitigen Markennamen und Eigentümergruppen. Die Markenansicht hält alle Marken mit mindestens 50 Stationen getrennt und bündelt kleinere Marken in einem Sonstige-Topf.",
-        "brand_data_missing": "Die Markenvergleich-Daten wurden noch nicht erzeugt. Führe einmal `python3 scripts/04_build_dashboard_dataset.py` aus, um `data/processed_brand_daily_margins.parquet` zu erstellen.",
-        "brand_level": "Vergleichsebene",
-        "brand_level_brand": "Markennamen (50+ Stationen)",
-        "brand_level_owner": "Eigentümergruppen",
-        "brand_groups": "Gruppen vergleichen",
-        "brand_groups_help": "Standardmäßig werden die größten Gruppen nach Stationszahl gewählt. Füge Discount- oder Premiummarken hinzu, um sie direkt zu vergleichen.",
-        "policy_window": "Politikfenster",
-        "tankrabatt_1": "Tankrabatt 1 / 2022",
-        "tankrabatt_2": "Tankrabatt 2 / 2026",
-        "brand_margin_trend": "Netto-Produktspanne nach Gruppe",
-        "brand_delta_title": "Spannenänderung im Tankrabatt vs. 365-Tage-Basis vor Steueränderung",
-        "brand_delta_note": "Positive Werte bedeuten, dass die Netto-Produktspanne der Gruppe während des Tankrabatts höher war als ihre eigene einjährige Vor-Ereignis-Basislinie.",
-        "group": "Gruppe",
-        "stations": "Stationen",
-        "baseline_margin": "Basis-Spanne",
-        "discount_margin": "Tankrabatt-Spanne",
-        "delta_margin": "Spannen-Delta",
-        "discount_price": "Tankrabatt-Zapfsäulenpreis",
-        "location_title": "Dynamische regionale Preisanalyse",
-        "location_note": "Preistrends in Deutschlands 10 Postleitzonen (PLZ 0-9), direkt aggregiert aus den Tankstellendaten.",
-        "cheapest_region": "Günstigste Zone Basis: ",
-        "regional_spread_title": "Regionaler Preisvergleich",
-        "most_expensive": "Teuerste Region",
-        "cheapest": "Günstigste Region",
-        "max_regional_premium": "Maximale regionale Spanne (Spitze vs. Tal)",
-        "regional_tank_extra": "Kosten-Unterschied pro 50L Tank (Spitze vs. Tal)",
-        "regional_dynamics": "Regionale Preisdynamik",
-        "regional_data_missing": "Die regionalen Vergleichsdaten wurden noch nicht erzeugt. Bitte führe einmal python3 scripts/04_build_dashboard_dataset.py aus.",
-    },
-}
+@st.cache_data
+def load_translations():
+    translations_dir = Path(__file__).parent / "translations"
+    translations = {}
+    for lang in ["en", "de"]:
+        json_path = translations_dir / f"{lang}.json"
+        if json_path.exists():
+            with open(json_path, "r", encoding="utf-8") as f:
+                translations[lang] = json.load(f)
+        else:
+            translations[lang] = {}
+    return translations
 
+TRANSLATIONS = load_translations()
 
 def detect_default_language() -> str:
     candidates = []
@@ -504,6 +238,46 @@ def detect_default_language() -> str:
 # 2. DATA PIPELINE (Vectorized — no loops)
 # ==========================================
 
+def _compute_smoothing(df: pl.DataFrame, smoothing_days: int, partition_cols: list[str] = None) -> pl.DataFrame:
+    """
+    Applies a rolling mean to raw/product columns and recalculates margins.
+    If partition_cols is provided, the rolling mean is computed over each group.
+    """
+    if smoothing_days <= 1:
+        return df
+
+    cols_to_smooth = [
+        "Raw_Material_EUR_per_Liter",
+        "brent_eur_liter",
+        "e5_product_eur_liter",
+        "e10_product_eur_liter",
+        "diesel_product_eur_liter",
+    ]
+
+    # Dynamically apply rolling mean with or without grouping
+    expressions = []
+    for col in cols_to_smooth:
+        expr = pl.col(col).rolling_mean(window_size=smoothing_days, min_periods=1)
+        if partition_cols:
+            expr = expr.over(partition_cols)
+        expressions.append(expr.alias(col))
+
+    df = df.sort("date").with_columns(expressions)
+
+    # Recalculate margins based on smoothed values
+    df = df.with_columns([
+        (pl.col("e5_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_e5"),
+        (pl.col("e10_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_e10"),
+        (pl.col("diesel_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_diesel"),
+        (pl.col("e5_net_price") - pl.col("e5_product_eur_liter")).alias("retail_margin_e5"),
+        (pl.col("e10_net_price") - pl.col("e10_product_eur_liter")).alias("retail_margin_e10"),
+        (pl.col("diesel_net_price") - pl.col("diesel_product_eur_liter")).alias("retail_margin_diesel"),
+        (pl.col("e5_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_e5"),
+        (pl.col("e10_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_e10"),
+        (pl.col("diesel_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_diesel"),
+    ])
+    return df
+
 @st.cache_data(show_spinner="Loading aggregated spreads + taxes…")
 def load_data(start_date: date = date(2021, 1, 1), smoothing_days: int = 1):
     """
@@ -511,25 +285,7 @@ def load_data(start_date: date = date(2021, 1, 1), smoothing_days: int = 1):
     """
     df = pl.read_parquet(DATA_DIR / "processed_daily_margins.parquet")
     df = df.filter(pl.col("date") >= start_date)
-    if smoothing_days > 1:
-        df = df.sort("date").with_columns([
-            pl.col("Raw_Material_EUR_per_Liter").rolling_mean(window_size=smoothing_days, min_periods=1).alias("Raw_Material_EUR_per_Liter"),
-            pl.col("brent_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).alias("brent_eur_liter"),
-            pl.col("e5_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).alias("e5_product_eur_liter"),
-            pl.col("e10_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).alias("e10_product_eur_liter"),
-            pl.col("diesel_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).alias("diesel_product_eur_liter"),
-        ])
-        df = df.with_columns([
-            (pl.col("e5_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_e5"),
-            (pl.col("e10_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_e10"),
-            (pl.col("diesel_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_diesel"),
-            (pl.col("e5_net_price") - pl.col("e5_product_eur_liter")).alias("retail_margin_e5"),
-            (pl.col("e10_net_price") - pl.col("e10_product_eur_liter")).alias("retail_margin_e10"),
-            (pl.col("diesel_net_price") - pl.col("diesel_product_eur_liter")).alias("retail_margin_diesel"),
-            (pl.col("e5_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_e5"),
-            (pl.col("e10_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_e10"),
-            (pl.col("diesel_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_diesel"),
-        ])
+    df = _compute_smoothing(df, smoothing_days)
     return df
 
 @st.cache_data(show_spinner="Loading intraday rhythm…")
@@ -543,64 +299,15 @@ def load_brand_daily_data(smoothing_days: int = 1):
     if not BRAND_DAILY_FILE.exists():
         return None
     df = pl.read_parquet(BRAND_DAILY_FILE)
-    if smoothing_days > 1:
-        df = df.sort("date").with_columns([
-            pl.col("Raw_Material_EUR_per_Liter").rolling_mean(window_size=smoothing_days, min_periods=1).over(["analysis_level", "comparison_group"]).alias("Raw_Material_EUR_per_Liter"),
-            pl.col("brent_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).over(["analysis_level", "comparison_group"]).alias("brent_eur_liter"),
-            pl.col("e5_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).over(["analysis_level", "comparison_group"]).alias("e5_product_eur_liter"),
-            pl.col("e10_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).over(["analysis_level", "comparison_group"]).alias("e10_product_eur_liter"),
-            pl.col("diesel_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).over(["analysis_level", "comparison_group"]).alias("diesel_product_eur_liter"),
-        ])
-        df = df.with_columns([
-            (pl.col("e5_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_e5"),
-            (pl.col("e10_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_e10"),
-            (pl.col("diesel_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_diesel"),
-            (pl.col("e5_net_price") - pl.col("e5_product_eur_liter")).alias("retail_margin_e5"),
-            (pl.col("e10_net_price") - pl.col("e10_product_eur_liter")).alias("retail_margin_e10"),
-            (pl.col("diesel_net_price") - pl.col("diesel_product_eur_liter")).alias("retail_margin_diesel"),
-            (pl.col("e5_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_e5"),
-            (pl.col("e10_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_e10"),
-            (pl.col("diesel_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_diesel"),
-        ])
+    df = _compute_smoothing(df, smoothing_days, partition_cols=["analysis_level", "comparison_group"])
     return df
-
-# ── Intraday mock (static, not date-dependent) ────────────────────────────────
-@st.cache_data
-def get_intraday_data():
-    hours  = list(range(24))
-    # Realistic German pattern: cheap night, rises to 12pm peak, drops 18-22, cheap again
-    prices = [
-        1.74, 1.72, 1.71, 1.70, 1.70, 1.71,  # 00–05 night cheap
-        1.73, 1.77, 1.82, 1.87, 1.91, 1.96,  # 06–11 rising
-        1.97, 1.96, 1.94, 1.92, 1.91, 1.90,  # 12–17 plateau (12pm spike)
-        1.88, 1.83, 1.79, 1.76, 1.74, 1.72,  # 18–23 evening drop
-    ]
-    return pl.DataFrame({"Hour": hours, "Avg_Price_EUR": prices})
 
 @st.cache_data(show_spinner="Loading regional pricing data…")
 def load_regional_daily_data(smoothing_days: int = 1):
     if not REGIONAL_DAILY_FILE.exists():
         return None
     df = pl.read_parquet(REGIONAL_DAILY_FILE)
-    if smoothing_days > 1:
-        df = df.sort("date").with_columns([
-            pl.col("Raw_Material_EUR_per_Liter").rolling_mean(window_size=smoothing_days, min_periods=1).over("region").alias("Raw_Material_EUR_per_Liter"),
-            pl.col("brent_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).over("region").alias("brent_eur_liter"),
-            pl.col("e5_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).over("region").alias("e5_product_eur_liter"),
-            pl.col("e10_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).over("region").alias("e10_product_eur_liter"),
-            pl.col("diesel_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).over("region").alias("diesel_product_eur_liter"),
-        ])
-        df = df.with_columns([
-            (pl.col("e5_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_e5"),
-            (pl.col("e10_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_e10"),
-            (pl.col("diesel_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_diesel"),
-            (pl.col("e5_net_price") - pl.col("e5_product_eur_liter")).alias("retail_margin_e5"),
-            (pl.col("e10_net_price") - pl.col("e10_product_eur_liter")).alias("retail_margin_e10"),
-            (pl.col("diesel_net_price") - pl.col("diesel_product_eur_liter")).alias("retail_margin_diesel"),
-            (pl.col("e5_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_e5"),
-            (pl.col("e10_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_e10"),
-            (pl.col("diesel_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_diesel"),
-        ])
+    df = _compute_smoothing(df, smoothing_days, partition_cols=["region"])
     return df
 
 # ==========================================

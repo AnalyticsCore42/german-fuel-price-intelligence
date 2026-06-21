@@ -8,11 +8,17 @@ Description: Analyze gas station data from Tankerkoenig with focus on brand name
 import polars as pl
 from pathlib import Path
 
-DATA_DIR = Path("/home/i/Music/1_Project_German_GasolinePrices/data")
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
 STATIONS_FILE = DATA_DIR / "tankerkoenig" / "stations" / "latest-stations.parquet"
 
 def main():
     print("Loading station data...")
+    if not STATIONS_FILE.exists():
+        print(f"Error: {STATIONS_FILE} not found.")
+        return
+        
     df = pl.read_parquet(STATIONS_FILE)
     print(f"Total stations: {df.shape[0]:,}")
     print(f"\nColumns: {df.columns}")
@@ -57,6 +63,7 @@ def main():
 
     matching = []
     for row in df_with_brand.iter_rows():
+        # Keep only indices 0, 1, 2 representing uuid, name, brand
         uuid, name, brand = row[0], row[1].lower(), row[2].lower()
         if brand in name:
             matching.append((name[:40], brand[:20]))
@@ -135,7 +142,7 @@ def main():
     print(f"Unique station names: {df['name'].n_unique()}")
     print(f"Unique cities: {df['city'].n_unique()}")
 
-    # Date range
+    # Date active range check
     if 'first_active' in df.columns:
         print(f"First active range: {df['first_active'].min()} to {df['first_active'].max()}")
 

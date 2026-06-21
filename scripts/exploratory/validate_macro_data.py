@@ -1,23 +1,20 @@
 """
-Script: 01_validate_macro_data.py
+Script: validate_macro_data.py
 Description: Validates, cleans, and merges the macroeconomic datasets (Brent Crude and EUR/USD).
-Inputs: 
-    - ../data/seed_bulk_baseline_brent_crude.csv
-    - ../data/seed_bulk_baseline_eur_usd.csv
-Outputs: Summary statistics and data quality report to standard output.
-
-Memory Constraint: Uses strictly Polars for processing to maintain <16GB footprint.
 """
 
 import polars as pl
-import os
+from pathlib import Path
 
 # ==========================================
 # 1. SETUP & CONFIGURATION
 # ==========================================
 
-BRENT_FILE = "../data/seed_bulk_baseline_brent_crude.csv"
-EURUSD_FILE = "../data/seed_bulk_baseline_eur_usd.csv"
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
+
+BRENT_FILE = str(PROJECT_ROOT / "data" / "seed_bulk_baseline_brent_crude.csv")
+EURUSD_FILE = str(PROJECT_ROOT / "data" / "seed_bulk_baseline_eur_usd.csv")
 BARREL_TO_LITER = 159.0
 
 # ==========================================
@@ -112,7 +109,7 @@ def validate_macro_data():
     print(merged_df.tail(5))
     
     # Save the cleaned and processed baseline dataset for later
-    output_path = "../data/processed_macro_baseline.parquet"
+    output_path = str(PROJECT_ROOT / "data" / "processed_macro_baseline.parquet")
     merged_df.write_parquet(output_path)
     print(f"\nSaved cleaned macroeconomic baseline to {output_path}")
 

@@ -1,14 +1,11 @@
 """
-Script: 07_station_price_stats.py
+Module: station_price_stats.py
 Description: Builds a compact station-level price statistics parquet for the
              Gas Station Finder dashboard tab. For each of the ~17k stations
              with valid WGS84 coordinates, computes:
                - 14-day rolling average prices (e5, e10, diesel)
                - Most recent observed price and date
                - Station metadata (name, brand, city, street, lat, lng)
-Inputs:  data/tankerkoenig/prices/<year>/<date>.parquet
-         data/tankerkoenig/stations/cleaned-stations.parquet
-Outputs: data/station_price_stats.parquet (~18k rows, <2MB)
 """
 
 import polars as pl
@@ -18,10 +15,10 @@ from pathlib import Path
 # 1. SETUP & CONFIGURATION
 # ==========================================
 
-PROJECT_DIR = Path(__file__).parent.parent
-PRICES_DIR = PROJECT_DIR / "data" / "tankerkoenig" / "prices"
-STATIONS_FILE = PROJECT_DIR / "data" / "tankerkoenig" / "stations" / "cleaned-stations.parquet"
-OUTPUT_FILE = PROJECT_DIR / "data" / "station_price_stats.parquet"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PRICES_DIR = PROJECT_ROOT / "data" / "tankerkoenig" / "prices"
+STATIONS_FILE = PROJECT_ROOT / "data" / "tankerkoenig" / "stations" / "cleaned-stations.parquet"
+OUTPUT_FILE = PROJECT_ROOT / "data" / "station_price_stats.parquet"
 
 LOOKBACK_DAYS = 14
 MIN_PRICE = 0.80
@@ -31,14 +28,12 @@ MAX_PRICE = 3.00
 LAT_MIN, LAT_MAX = 47.0, 56.0
 LNG_MIN, LNG_MAX = 5.0, 16.0
 
-
 # ==========================================
 # 2. DATA PIPELINE
 # ==========================================
 
 def list_price_files() -> list[Path]:
     return sorted(PRICES_DIR.rglob("*.parquet"))
-
 
 def load_station_metadata() -> pl.DataFrame:
     stations = pl.read_parquet(STATIONS_FILE)
@@ -61,7 +56,6 @@ def load_station_metadata() -> pl.DataFrame:
             & (pl.col("longitude") > LNG_MIN) & (pl.col("longitude") < LNG_MAX)
         )
     )
-
 
 def build_station_stats() -> None:
     price_files = list_price_files()
@@ -151,7 +145,6 @@ def build_station_stats() -> None:
     print(f"Stations with prices: {result.height:,}")
     print(f"Output: {OUTPUT_FILE} ({OUTPUT_FILE.stat().st_size / 1024:.0f} KB)")
     print(f"Columns: {result.columns}")
-
 
 if __name__ == "__main__":
     build_station_stats()

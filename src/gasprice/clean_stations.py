@@ -1,4 +1,11 @@
+"""
+Module: clean_stations.py
+Description: Cleans raw gas station data, maps messy brand names to corporate parent groups,
+and maps post codes to German regions.
+"""
+
 import polars as pl
+from pathlib import Path
 
 def clean_station_data(input_path: str, output_path: str):
     print("Loading raw stations data...")
@@ -74,7 +81,6 @@ def clean_station_data(input_path: str, output_path: str):
     })
 
     # 3. Join the Corporate Group onto the main dataset
-    # If a brand isn't in our mapping, it truly belongs in the long-tail Independent bucket
     df_cleaned = df.join(mapping_df, on="brand", how="left").with_columns(
         pl.col("corporate_group").fill_null("Independent / Small Operator")
     )
@@ -104,13 +110,15 @@ def clean_station_data(input_path: str, output_path: str):
     df_cleaned.write_parquet(output_path)
     print(f"Cleaned dataset saved to {output_path}!")
     
-    # 5. Print the new distribution to verify the fix!
+    # 5. Print the new distribution to verify the mapping
     print("\nCorporate Group Distribution:")
     distribution = df_cleaned.group_by("corporate_group").len().sort("len", descending=True)
     print(distribution)
 
 if __name__ == "__main__":
+    # Resolve paths relative to project root
+    project_root = Path(__file__).resolve().parents[2]
     clean_station_data(
-        input_path="data/tankerkoenig/stations/latest-stations.parquet",
-        output_path="data/tankerkoenig/stations/cleaned-stations.parquet"
+        input_path=str(project_root / "data" / "tankerkoenig" / "stations" / "latest-stations.parquet"),
+        output_path=str(project_root / "data" / "tankerkoenig" / "stations" / "cleaned-stations.parquet")
     )

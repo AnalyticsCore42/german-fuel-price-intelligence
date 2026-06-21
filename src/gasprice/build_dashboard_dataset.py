@@ -1,30 +1,20 @@
 """
-Script: 08_build_dashboard_data.py
+Module: build_dashboard_dataset.py
 Description: Builds compact dashboard datasets from all local Tankerkoenig price data.
-
-The raw daily files are price-change logs, not complete hourly snapshots. This
-script therefore carries each station's last known price forward hour by hour.
-That makes the intraday curve a station-level price estimate instead of an
-average of price-change events.
-
-Inputs:
-    - ../data/tankerkoenig/prices/YYYY/YYYY-MM-DD.parquet
-    - ../data/processed_macro_baseline.parquet
-Outputs:
-    - ../data/processed_daily_margins.parquet
-    - ../data/processed_intraday.parquet
-    - ../data/processed_brand_daily_margins.parquet
+             Utilizes standard package imports and dynamic path resolutions.
 """
 
-import importlib.util
-import sys
 from pathlib import Path
-
 import polars as pl
 
-SCRIPT_DIR = Path(__file__).parent
-PROJECT_DIR = SCRIPT_DIR.parent
-DATA_DIR = PROJECT_DIR / "data"
+from gasprice.tax_engine import calculate_net_price
+
+# ==========================================
+# 1. SETUP & CONFIGURATION
+# ==========================================
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = PROJECT_ROOT / "data"
 PRICES_DIR = DATA_DIR / "tankerkoenig" / "prices"
 MACRO_FILE = DATA_DIR / "processed_macro_baseline.parquet"
 REFINED_BASE_FILE = DATA_DIR / "processed_refined_product_baseline.parquet"
@@ -40,19 +30,9 @@ MIN_BRAND_STATIONS = 50
 OTHER_BRAND_BUCKET = "Other brands (<50 stations)"
 HOURS = pl.DataFrame({"hour": list(range(24))})
 
-spec = importlib.util.spec_from_file_location(
-    "tax_engine", str(SCRIPT_DIR / "02_tax_engine.py")
-)
-tax_engine = importlib.util.module_from_spec(spec)
-sys.modules["tax_engine"] = tax_engine
-spec.loader.exec_module(tax_engine)
-calculate_net_price = tax_engine.calculate_net_price
-
-
 def list_price_files() -> list[Path]:
     """Return all locally available daily price files in chronological order."""
     return sorted(PRICES_DIR.glob("*/*.parquet"))
-
 
 def empty_station_state() -> pl.DataFrame:
     return pl.DataFrame(
@@ -63,7 +43,6 @@ def empty_station_state() -> pl.DataFrame:
             "price_e10": pl.Float64,
         }
     )
-
 
 def empty_station_metadata() -> pl.DataFrame:
     return pl.DataFrame(
@@ -76,7 +55,6 @@ def empty_station_metadata() -> pl.DataFrame:
             "brand_station_count": pl.UInt32,
         }
     )
-
 
 def load_station_metadata() -> pl.DataFrame:
     """Load cleaned station metadata and create the visible-brand bucket."""
@@ -115,14 +93,12 @@ def load_station_metadata() -> pl.DataFrame:
         .select(["station_uuid", "brand", "brand_group", "corporate_group", "region", "brand_station_count"])
     )
 
-
 def valid_price(col_name: str) -> pl.Expr:
     return (
         pl.when((pl.col(col_name) > MIN_PRICE_VALID) & (pl.col(col_name) < MAX_PRICE_VALID))
         .then(pl.col(col_name))
         .otherwise(None)
     )
-
 
 def read_hourly_changes(path: Path) -> pl.DataFrame:
     raw = (
@@ -147,7 +123,6 @@ def read_hourly_changes(path: Path) -> pl.DataFrame:
         ])
         .sort(["date", "station_uuid", "hour"])
     )
-
 
 def build_hourly_snapshot(hourly_changes: pl.DataFrame, state: pl.DataFrame) -> pl.DataFrame:
     date_value = hourly_changes["date"].min()
@@ -176,7 +151,6 @@ def build_hourly_snapshot(hourly_changes: pl.DataFrame, state: pl.DataFrame) -> 
         .select(["date", "hour", "station_uuid", "price_diesel", "price_e5", "price_e10"])
     )
 
-
 def summarize_hourly(snapshot: pl.DataFrame) -> pl.DataFrame:
     return (
         snapshot.group_by(["date", "hour"])
@@ -189,7 +163,6 @@ def summarize_hourly(snapshot: pl.DataFrame) -> pl.DataFrame:
         .sort(["date", "hour"])
     )
 
-
 def summarize_daily(hourly_summary: pl.DataFrame) -> pl.DataFrame:
     return (
         hourly_summary.group_by("date")
@@ -201,7 +174,6 @@ def summarize_daily(hourly_summary: pl.DataFrame) -> pl.DataFrame:
         ])
         .sort("date")
     )
-
 
 def summarize_brand_daily(snapshot: pl.DataFrame, station_metadata: pl.DataFrame) -> pl.DataFrame:
     if station_metadata.is_empty():
@@ -256,7 +228,6 @@ def summarize_brand_daily(snapshot: pl.DataFrame, station_metadata: pl.DataFrame
         summarize_dimension("corporate_group", "owner"),
     ], how="vertical")
 
-
 def summarize_regional_daily(snapshot: pl.DataFrame, station_metadata: pl.DataFrame) -> pl.DataFrame:
     if station_metadata.is_empty():
         return pl.DataFrame(
@@ -290,14 +261,12 @@ def summarize_regional_daily(snapshot: pl.DataFrame, station_metadata: pl.DataFr
         .sort(["date", "region"])
     )
 
-
 def end_of_day_state(snapshot: pl.DataFrame) -> pl.DataFrame:
     return (
         snapshot.filter(pl.col("hour") == 23)
         .select(["station_uuid", "price_diesel", "price_e5", "price_e10"])
         .sort("station_uuid")
     )
-
 
 def add_tax_and_spread_columns(df_daily: pl.DataFrame) -> pl.DataFrame:
     macro_df = pl.read_parquet(MACRO_FILE)
@@ -364,8 +333,7 @@ def add_tax_and_spread_columns(df_daily: pl.DataFrame) -> pl.DataFrame:
 
     return df_joined.drop_nulls(subset=["price_e5", "Raw_Material_EUR_per_Liter"])
 
-
-def run_pipeline() -> None:
+def build_dashboard_datasets() -> None:
     price_files = list_price_files()
     if not price_files:
         print(f"Error: no parquet files found under {PRICES_DIR}")
@@ -441,6 +409,5 @@ def run_pipeline() -> None:
         print(f"Regional: {REGIONAL_DAILY_OUTPUT_FILE} ({regional_daily_df.height:,} rows, {REGIONAL_DAILY_OUTPUT_FILE.stat().st_size / 1024 / 1024:.2f} MB)")
     print(f"Date range: {daily_df['date'].min()} to {daily_df['date'].max()}")
 
-
 if __name__ == "__main__":
-    run_pipeline()
+    build_dashboard_datasets()

@@ -13,8 +13,10 @@ from pathlib import Path
 import warnings
 warnings.filterwarnings('ignore')
 
-# Configuration
-DATA_DIR = Path("/home/i/Music/1_Project_German_GasolinePrices/data")
+# Configuration resolved dynamically relative to project root
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
 PRICES_DIR = DATA_DIR / "tankerkoenig" / "prices"
 MACRO_FILE = DATA_DIR / "processed_macro_baseline.parquet"
 
@@ -112,7 +114,6 @@ def analyze_12am_rule(df):
 
     return midnight_df
 
-
 def analyze_price_change_patterns(df):
     """Analyze patterns in price changes"""
     print("\n" + "=" * 60)
@@ -163,7 +164,6 @@ def analyze_price_change_patterns(df):
         print(f"  {hour:02d}:00 | E5: {e5_avg:.3f} | E10: {e10_avg:.3f} | Diesel: {diesel_avg:.3f}")
 
     return hour_changes
-
 
 def analyze_price_vs_brent(df, macro_df):
     """Analyze price relationship with Brent crude"""
@@ -227,7 +227,6 @@ def analyze_price_vs_brent(df, macro_df):
                 print(f"  Lag {lag} day(s): correlation = {corr:.4f}")
 
     return merged_pd
-
 
 def prepare_ml_features(df, macro_df):
     """Prepare features for ML modeling"""
@@ -307,14 +306,12 @@ def prepare_ml_features(df, macro_df):
     print(f"\nFinal dataset: {merged_pd.shape[0]} rows, {merged_pd.shape[1]} columns")
     return merged_pd
 
-
 def run_ml_model(merged_pd):
     """Run ML models on the prepared features"""
     print("\n" + "=" * 60)
     print("5. MACHINE LEARNING MODELING (Time Series)")
     print("=" * 60)
 
-    from sklearn.model_selection import train_test_split, TimeSeriesSplit
     from sklearn.preprocessing import StandardScaler
     from sklearn.linear_model import LinearRegression
     from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
@@ -389,10 +386,13 @@ def run_ml_model(merged_pd):
 
     return models, merged_clean, X_test, y_test, scaler
 
-
 def main():
     print("Loading price data...")
     df = load_price_data(2026)
+    if df.is_empty():
+        print("Warning: price dataset is empty.")
+        return
+        
     print(f"Loaded {len(df):,} price records")
 
     print("\nLoading macro data...")

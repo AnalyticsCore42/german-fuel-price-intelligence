@@ -1,5 +1,5 @@
 """
-Script: 05_analyze_raw_data.py
+Script: analyze_raw_data.py
 Description: A quick diagnostic script to load the downloaded Tankerkönig data,
              inspect the schemas, and verify that the price data correctly maps
              to the station metadata.
@@ -11,8 +11,9 @@ from pathlib import Path
 # ==========================================
 # 1. SETUP
 # ==========================================
-SCRIPT_DIR = Path(__file__).parent
-DATA_DIR = SCRIPT_DIR.parent.parent / "data" / "tankerkoenig"
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
+DATA_DIR = PROJECT_ROOT / "data" / "tankerkoenig"
 STATIONS_FILE = DATA_DIR / "stations" / "latest-stations.parquet"
 
 # We'll just look at the very first day downloaded to test
@@ -21,8 +22,6 @@ PRICE_FILE = DATA_DIR / "prices" / "2021" / "2021-01-01.parquet"
 # ANSI escape codes for modern startup-style CLI
 C_GREEN = "\033[1;92m"
 C_YELLOW = "\033[1;93m"
-C_RED = "\033[1;91m"
-C_CYAN = "\033[1;96m"
 C_RESET = "\033[0m"
 
 def log_success(msg: str):
@@ -32,10 +31,10 @@ def log_warn(msg: str):
     print(f"{C_YELLOW}[▲] WARNING:{C_RESET} {msg}")
 
 def log_error(msg: str):
-    print(f"{C_RED}[✘] ERROR:{C_RESET} {msg}")
+    print(f"\033[1;91m[✘] ERROR:\033[0m {msg}")
 
 def log_info(msg: str):
-    print(f"{C_CYAN}[ℹ] INFO:{C_RESET} {msg}")
+    print(f"\033[1;96m[ℹ] INFO:\033[0m {msg}")
 
 def analyze():
     print("="*50)

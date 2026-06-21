@@ -1,38 +1,65 @@
 """
-Script: 05_fetch_refined_product_baseline.py
+Module: fetch_refined_product_baseline.py
 Description: Fetches full historical data (from 2005 to present) for Brent crude, 
              RBOB gasoline, Heating oil, and Ethanol futures, plus the EUR/USD rate.
              Performs unit conversions to EUR per liter and computes E5 and E10 
              blended wholesale product costs.
-Outputs:
-    - data/processed_refined_product_baseline.parquet
 """
 
 import requests
 import polars as pl
+from requests.exceptions import RequestException
+import time
+import logging
+import json
 from datetime import datetime
 from pathlib import Path
 
-# Setup paths
-SCRIPT_DIR = Path(__file__).parent
-DATA_DIR = SCRIPT_DIR.parent / "data"
+# Setup paths and logger
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("gasprice.fetch_refined_product_baseline")
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = PROJECT_ROOT / "data"
 OUTPUT_FILE = DATA_DIR / "processed_refined_product_baseline.parquet"
 
 BARREL_TO_LITER = 159.0
 GALLON_TO_LITER = 3.785411784
 
+def fetch_with_retry(url, headers, max_retries=3, backoff_factor=2):
+    """
+    Perform requests.get with timeout and exponential backoff retry.
+    Propagates request exceptions after exhaustion.
+    """
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info(f"Fetching URL (attempt {attempt}/{max_retries}): {url}")
+            res = requests.get(url, headers=headers, timeout=15)
+            res.raise_for_status()
+            return res.json()
+        except RequestException as e:
+            logger.warning(f"Transient network error on attempt {attempt}: {e}")
+            if attempt == max_retries:
+                logger.error(f"Failed to fetch {url} after {max_retries} attempts.")
+                raise e
+            time.sleep(backoff_factor ** attempt)
+
 def fetch_yahoo_data(ticker, start_date, end_date):
+    """
+    Fetch historical daily data for a given ticker from Yahoo Finance.
+    """
     start_ts = int(datetime.combine(start_date, datetime.min.time()).timestamp())
     end_ts = int(datetime.combine(end_date, datetime.min.time()).timestamp())
     
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?period1={start_ts}?2={end_ts}&period2={end_ts}&interval=1d"
-    # Fallback to standard url without period1 query duplicate
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?period1={start_ts}&period2={end_ts}&interval=1d"
-    
     headers = {'User-Agent': 'Mozilla/5.0'}
     
-    res = requests.get(url, headers=headers).json()
-    
+    try:
+        res = fetch_with_retry(url, headers=headers)
+    except RequestException as e:
+        logger.error(f"Network failure fetching {ticker}: {e}")
+        raise e
+        
     try:
         result = res['chart']['result'][0]
         timestamps = result['timestamp']
@@ -48,35 +75,35 @@ def fetch_yahoo_data(ticker, start_date, end_date):
             "date": list(valid_dates),
             "value": list(valid_closes)
         })
-    except Exception as e:
-        print(f"Error parsing Yahoo data for {ticker}: {e}")
-        return pl.DataFrame(schema={"date": pl.Date, "value": pl.Float64})
+    except (KeyError, TypeError, IndexError, json.JSONDecodeError) as e:
+        logger.error(f"Malformed response format from Yahoo Finance for ticker {ticker}: {e}")
+        raise e
 
 def build_refined_product_baseline():
     # Fetch from 2005-01-01 to capture full historical trading of RBOB and Ethanol
     start_date = datetime(2005, 1, 1).date()
     end_date = datetime.today().date()
     
-    print(f"Downloading full history from {start_date} to {end_date}...")
+    logger.info(f"Downloading full history from {start_date} to {end_date}...")
     
     # Fetch all tickers
-    print("Fetching Brent crude (BZ=F)...")
+    logger.info("Fetching Brent crude (BZ=F)...")
     brent = fetch_yahoo_data("BZ=F", start_date, end_date).rename({"value": "brent_usd_barrel"})
     
-    print("Fetching RBOB gasoline (RB=F)...")
+    logger.info("Fetching RBOB gasoline (RB=F)...")
     rbob = fetch_yahoo_data("RB=F", start_date, end_date).rename({"value": "rbob_usd_gallon"})
     
-    print("Fetching Heating oil (HO=F)...")
+    logger.info("Fetching Heating oil (HO=F)...")
     ho = fetch_yahoo_data("HO=F", start_date, end_date).rename({"value": "ho_usd_gallon"})
     
-    print("Fetching CBOT Ethanol (EH=F)...")
+    logger.info("Fetching CBOT Ethanol (EH=F)...")
     ethanol = fetch_yahoo_data("EH=F", start_date, end_date).rename({"value": "ethanol_usd_gallon"})
     
-    print("Fetching EUR/USD rate (EURUSD=X)...")
+    logger.info("Fetching EUR/USD rate (EURUSD=X)...")
     eurusd = fetch_yahoo_data("EURUSD=X", start_date, end_date).rename({"value": "eur_usd"})
     
     # Create master calendar date range
-    print("Merging and aligning calendar timelines...")
+    logger.info("Merging and aligning calendar timelines...")
     calendar = pl.DataFrame({
         "date": pl.date_range(start_date, end_date, "1d", eager=True)
     })
@@ -103,7 +130,7 @@ def build_refined_product_baseline():
         pl.col("eur_usd").backward_fill()
     ])
     
-    print("Applying unit conversions and blend formulas...")
+    logger.info("Applying unit conversions and blend formulas...")
     # Convert individual elements to EUR per Liter
     converted = merged.with_columns([
         ((pl.col("brent_usd_barrel") / pl.col("eur_usd")) / BARREL_TO_LITER).alias("brent_eur_liter"),
@@ -140,15 +167,15 @@ def build_refined_product_baseline():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     final_df.write_parquet(OUTPUT_FILE, compression="zstd")
     
-    print("\n==========================================")
-    print("FINISHED BUILD SUCCESSFUL")
-    print("==========================================")
-    print(f"File:      {OUTPUT_FILE}")
-    print(f"Rows:      {final_df.height:,}")
-    print(f"Date range: {final_df['date'].min()} to {final_df['date'].max()}")
-    print(f"Sample E5 product cost:  €{final_df['e5_product_eur_liter'].tail(1)[0]:.4f}/L")
-    print(f"Sample E10 product cost: €{final_df['e10_product_eur_liter'].tail(1)[0]:.4f}/L")
-    print(f"Sample Diesel cost:      €{final_df['diesel_product_eur_liter'].tail(1)[0]:.4f}/L")
+    logger.info("\n==========================================")
+    logger.info("FINISHED BUILD SUCCESSFUL")
+    logger.info("==========================================")
+    logger.info(f"File:      {OUTPUT_FILE}")
+    logger.info(f"Rows:      {final_df.height:,}")
+    logger.info(f"Date range: {final_df['date'].min()} to {final_df['date'].max()}")
+    logger.info(f"Sample E5 product cost:  €{final_df['e5_product_eur_liter'].tail(1)[0]:.4f}/L")
+    logger.info(f"Sample E10 product cost: €{final_df['e10_product_eur_liter'].tail(1)[0]:.4f}/L")
+    logger.info(f"Sample Diesel cost:      €{final_df['diesel_product_eur_liter'].tail(1)[0]:.4f}/L")
 
 if __name__ == "__main__":
     build_refined_product_baseline()
