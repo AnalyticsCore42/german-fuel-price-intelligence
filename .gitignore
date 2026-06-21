@@ -1,5 +1,7 @@
 # Secrets
 .env
+.DS_Store
+*.DS_Store
 
 # Python
 __pycache__/
