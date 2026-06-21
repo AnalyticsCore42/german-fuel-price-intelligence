@@ -36,6 +36,25 @@ END_DATE = date.today()
 # For quick testing: set True to only download 3 days
 TEST_MODE = "--test" in sys.argv
 
+# ANSI escape codes for modern startup-style CLI
+C_GREEN = "\033[1;92m"
+C_YELLOW = "\033[1;93m"
+C_RED = "\033[1;91m"
+C_CYAN = "\033[1;96m"
+C_RESET = "\033[0m"
+
+def log_success(msg: str):
+    print(f"{C_GREEN}[✔] SUCCESS:{C_RESET} {msg}")
+
+def log_warn(msg: str):
+    print(f"{C_YELLOW}[▲] WARNING:{C_RESET} {msg}")
+
+def log_error(msg: str):
+    print(f"{C_RED}[✘] ERROR:{C_RESET} {msg}")
+
+def log_info(msg: str):
+    print(f"{C_CYAN}[ℹ] INFO:{C_RESET} {msg}")
+
 # ==========================================
 # 2. CREDENTIAL LOADING
 # ==========================================
@@ -44,7 +63,7 @@ def load_env():
     """Load credentials from .env file."""
     env_path = PROJECT_DIR / ".env"
     if not env_path.exists():
-        print(f"ERROR: {env_path} not found. Create it with TK_USER and TK_PASS.")
+        log_error(f"{env_path} not found. Create it with TK_USER and TK_PASS.")
         sys.exit(1)
 
     env = {}
@@ -75,10 +94,10 @@ def download_csv(session: requests.Session, url: str, max_retries: int = 3) -> s
         except (requests.ConnectionError, requests.Timeout) as e:
             if attempt < max_retries:
                 wait = 5 * attempt
-                print(f"  [WARNING] Connection error (attempt {attempt}/{max_retries}), retrying in {wait}s...")
+                print(f"  {C_YELLOW}[▲] WARNING:{C_RESET} Connection error (attempt {attempt}/{max_retries}), retrying in {wait}s...")
                 time.sleep(wait)
             else:
-                print(f"  [ERROR] Failed after {max_retries} attempts: {e}")
+                print(f"  {C_RED}[✘] ERROR:{C_RESET} Failed after {max_retries} attempts: {e}")
                 raise
 
 
@@ -88,18 +107,18 @@ def download_stations(session: requests.Session, base_url: str):
     output_path = STATIONS_DIR / "latest-stations.parquet"
 
     if output_path.exists():
-        print(f"✓ Stations file already exists: {output_path}")
+        log_success(f"Stations file already exists: {output_path}")
         return
 
     # Use today's or yesterday's stations file
     for d in [date.today(), date.today() - timedelta(days=1), date.today() - timedelta(days=2)]:
         url = f"{base_url}/stations/{d.year}/{d.month:02d}/{d.strftime('%Y-%m-%d')}-stations.csv"
-        print(f"  Trying stations file for {d}...")
+        log_info(f"Trying stations file for {d}...")
         csv_text = download_csv(session, url)
         if csv_text:
             break
     else:
-        print("  ✗ Could not find a recent stations file. Skipping.")
+        print(f"  {C_RED}[✘] ERROR:{C_RESET} Could not find a recent stations file. Skipping.")
         return
 
     # Parse with Polars — stations CSV has messy quoting due to JSON column
@@ -110,7 +129,7 @@ def download_stations(session: requests.Session, base_url: str):
         ignore_errors=True,
     )
     df.write_parquet(output_path, compression="zstd")
-    print(f"✓ Stations saved: {output_path} ({df.height:,} stations, {output_path.stat().st_size / 1024:.0f} KB)")
+    log_success(f"Stations saved: {output_path} ({df.height:,} stations, {output_path.stat().st_size / 1024:.0f} KB)")
 
 
 def download_prices(session: requests.Session, base_url: str):
@@ -120,7 +139,7 @@ def download_prices(session: requests.Session, base_url: str):
 
     if TEST_MODE:
         end = min(START_DATE + timedelta(days=2), END_DATE)
-        print(f"⚡ TEST MODE: downloading only {START_DATE} to {end}")
+        log_info(f"TEST MODE: downloading only {START_DATE} to {end}")
 
     total_days = (end - current).days + 1
     downloaded = 0
@@ -129,7 +148,7 @@ def download_prices(session: requests.Session, base_url: str):
     failed_dates = []
     last_successful_date = None
 
-    print(f"\nDownloading prices: {current} → {end} ({total_days} days)")
+    log_info(f"Downloading prices: {current} → {end} ({total_days} days)")
     print("=" * 60)
 
     while current <= end:
@@ -155,7 +174,7 @@ def download_prices(session: requests.Session, base_url: str):
         try:
             csv_text = download_csv(session, url)
             if csv_text is None:
-                print(f"  {progress} {current} — 404 (no data)")
+                print(f"  {C_YELLOW}[▲] {progress} {current}:{C_RESET} 404 (no data)")
                 failed += 1
                 failed_dates.append(str(current))
                 current += timedelta(days=1)
@@ -169,12 +188,12 @@ def download_prices(session: requests.Session, base_url: str):
             size_kb = output_path.stat().st_size / 1024
             downloaded += 1
             last_successful_date = current
-            print(f"  {progress} {current} — ✓ {df.height:,} rows, {size_kb:.0f} KB")
+            print(f"  {C_GREEN}[✔] {progress} {current}:{C_RESET} {df.height:,} rows, {size_kb:.0f} KB")
 
         except Exception as e:
             failed += 1
             failed_dates.append(str(current))
-            print(f"  {progress} {current} — ✗ ERROR: {e}")
+            print(f"  {C_RED}[✘] {progress} {current}:{C_RESET} ERROR: {e}")
 
         current += timedelta(days=1)
 

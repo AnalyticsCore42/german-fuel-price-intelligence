@@ -12,11 +12,30 @@ from pathlib import Path
 # 1. SETUP
 # ==========================================
 SCRIPT_DIR = Path(__file__).parent
-DATA_DIR = SCRIPT_DIR.parent / "data" / "tankerkoenig"
+DATA_DIR = SCRIPT_DIR.parent.parent / "data" / "tankerkoenig"
 STATIONS_FILE = DATA_DIR / "stations" / "latest-stations.parquet"
 
 # We'll just look at the very first day downloaded to test
 PRICE_FILE = DATA_DIR / "prices" / "2021" / "2021-01-01.parquet"
+
+# ANSI escape codes for modern startup-style CLI
+C_GREEN = "\033[1;92m"
+C_YELLOW = "\033[1;93m"
+C_RED = "\033[1;91m"
+C_CYAN = "\033[1;96m"
+C_RESET = "\033[0m"
+
+def log_success(msg: str):
+    print(f"{C_GREEN}[✔] SUCCESS:{C_RESET} {msg}")
+
+def log_warn(msg: str):
+    print(f"{C_YELLOW}[▲] WARNING:{C_RESET} {msg}")
+
+def log_error(msg: str):
+    print(f"{C_RED}[✘] ERROR:{C_RESET} {msg}")
+
+def log_info(msg: str):
+    print(f"{C_CYAN}[ℹ] INFO:{C_RESET} {msg}")
 
 def analyze():
     print("="*50)
@@ -24,7 +43,7 @@ def analyze():
     print("="*50)
     
     if not STATIONS_FILE.exists():
-        print(f"ERROR: {STATIONS_FILE} not found.")
+        log_error(f"{STATIONS_FILE} not found.")
         return
         
     stations_df = pl.read_parquet(STATIONS_FILE)
@@ -41,7 +60,7 @@ def analyze():
     print("="*50)
     
     if not PRICE_FILE.exists():
-        print(f"ERROR: {PRICE_FILE} not found. Ensure the downloader has fetched Jan 1, 2021.")
+        log_error(f"{PRICE_FILE} not found. Ensure the downloader has fetched Jan 1, 2021.")
         return
         
     prices_df = pl.read_parquet(PRICE_FILE)
@@ -74,9 +93,9 @@ def analyze():
     print(f"Price change events missing a valid station UUID: {unmapped_count:,} ({(unmapped_count/prices_df.height)*100:.2f}%)")
     
     if unmapped_count == 0:
-        print("\n[SUCCESS] 100% of the price data perfectly maps to our stations list!")
+        print(f"\n{C_GREEN}[✔] SUCCESS:{C_RESET} 100% of the price data perfectly maps to our stations list!")
     else:
-        print("\n[WARNING] Some price changes belong to stations that are no longer in the latest stations list.")
+        print(f"\n{C_YELLOW}[▲] WARNING:{C_RESET} Some price changes belong to stations that are no longer in the latest stations list.")
         print("This is normal for historical data (stations close down). We can easily filter these out.")
 
 if __name__ == "__main__":
