@@ -9,7 +9,9 @@ Run with:  pytest tests/ -v
 import sys
 from pathlib import Path
 from datetime import date
-sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Make the project root importable so we can load ui/04_app.py
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from unittest.mock import MagicMock
 
@@ -48,7 +50,13 @@ class MockStreamlit:
         self.set_page_config = MagicMock()
         self.divider = MagicMock()
         self.checkbox = MagicMock(return_value=False)
-        self.cache_data = MagicMock(return_value=lambda f: f)
+        # st.cache_data may be used as a plain decorator or as a decorator factory.
+        # This minimal stand-in returns the decorated function unchanged.
+        def cache_data(*args, **kwargs):
+            if args and callable(args[0]):
+                return args[0]
+            return lambda f: f
+        self.cache_data = cache_data
         
         # Mock Context
         self.context = MagicMock()

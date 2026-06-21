@@ -1,9 +1,11 @@
 """
-Script: 04_app.py
+Module: 04_app.py
 Description: Premium Streamlit dashboard for German Gasoline Prices Analysis.
-             Uses real Tankerkoenig price data plus Brent/EUR-USD macro data.
-Inputs:  ../data/processed_daily_margins.parquet
-         ../data/processed_intraday.parquet
+             Loads aggregated datasets from data/ and renders interactive tabs.
+Inputs:  data/processed_daily_margins.parquet
+         data/processed_intraday.parquet
+         data/processed_brand_daily_margins.parquet
+         data/processed_regional_daily_margins.parquet
 Outputs: Interactive dark-mode dashboard on http://localhost:8501
 """
 
@@ -326,18 +328,18 @@ with st.sidebar:
         format_func=lambda key: language_labels[key],
     )
     lang = selected_language
-    tx = TRANSLATIONS[lang]
+    translations = TRANSLATIONS[lang]
 
-    def t(key: str) -> str:
-        return tx[key]
+    def translate(key: str) -> str:
+        return translations[key]
 
-    st.markdown(f"## {t('app_short')}")
-    st.markdown(f"<div style='color:#8892A4;font-size:0.8rem;margin-bottom:16px;'>{t('app_subtitle')}</div>", unsafe_allow_html=True)
+    st.markdown(f"## {translate('app_short')}")
+    st.markdown(f"<div style='color:#8892A4;font-size:0.8rem;margin-bottom:16px;'>{translate('app_subtitle')}</div>", unsafe_allow_html=True)
 
     # Pre-load data with 1-day smoothing to extract min/max dates for header and range slider
-    df_temp = load_data(smoothing_days=1)
-    raw_min = df_temp["date"].min()
-    raw_max = df_temp["date"].max()
+    full_data_df = load_data(smoothing_days=1)
+    raw_min = full_data_df["date"].min()
+    raw_max = full_data_df["date"].max()
     min_d = raw_min.to_python() if hasattr(raw_min, 'to_python') else raw_min
     max_d = raw_max.to_python() if hasattr(raw_max, 'to_python') else raw_max
 
@@ -351,31 +353,31 @@ with st.sidebar:
     st.divider()
 
     smoothing_options = {
-        1: t("smooth_daily"),
-        7: t("smooth_weekly"),
-        14: t("smooth_biweekly"),
-        30: t("smooth_monthly"),
+        1: translate("smooth_daily"),
+        7: translate("smooth_weekly"),
+        14: translate("smooth_biweekly"),
+        30: translate("smooth_monthly"),
     }
     smoothing_days = st.selectbox(
-        t("procurement_smoothing"),
+        translate("procurement_smoothing"),
         list(smoothing_options),
         index=0,
         format_func=lambda key: smoothing_options[key],
-        help=t("procurement_smoothing_help")
+        help=translate("procurement_smoothing_help")
     )
 
     df_full = load_data(smoothing_days=smoothing_days)
 
     date_range = st.slider(
-        t("date_range"),
+        translate("date_range"),
         min_value=min_d, max_value=max_d,
         value=(date(2022, 1, 1), max_d),
-        help=t("date_range_help")
+        help=translate("date_range_help")
     )
 
     fuel_options = {"e5": "Super E5", "e10": "Super E10", "diesel": "Diesel"}
     fuel_key = st.selectbox(
-        t("fuel_type"),
+        translate("fuel_type"),
         list(fuel_options),
         index=0
         , format_func=lambda key: fuel_options[key]
@@ -383,42 +385,42 @@ with st.sidebar:
     fuel_type = fuel_options[fuel_key]
 
     tax_viz_options = {
-        "hide": t("hide_taxes"),
-        "combined": t("taxes_combined"),
-        "detailed": t("taxes_detailed"),
+        "hide": translate("hide_taxes"),
+        "combined": translate("taxes_combined"),
+        "detailed": translate("taxes_detailed"),
     }
     tax_viz = st.selectbox(
-        t("tax_viz"),
+        translate("tax_viz"),
         list(tax_viz_options),
         index=2,
         format_func=lambda key: tax_viz_options[key],
-        help=t("tax_viz_help")
+        help=translate("tax_viz_help")
     )
 
     st.divider()
     baseline_options = {
-        "brent": t("brent_baseline"),
-        "refined": t("refined_baseline"),
+        "brent": translate("brent_baseline"),
+        "refined": translate("refined_baseline"),
     }
     spread_baseline_mode = st.selectbox(
-        t("spread_baseline_mode"),
+        translate("spread_baseline_mode"),
         list(baseline_options),
         index=0,
         format_func=lambda key: baseline_options[key]
     )
 
     st.divider()
-    show_tax_trend = st.checkbox(t("tax_trend"), value=False, help=t("tax_trend_help"))
+    show_tax_trend = st.checkbox(translate("tax_trend"), value=False, help=translate("tax_trend_help"))
     
     st.divider()
-    st.markdown(f"<div style='color:#4A5568;font-size:0.72rem;margin-top:auto;padding-top:24px;'>{t('data_sources')}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='color:#4A5568;font-size:0.72rem;margin-top:auto;padding-top:24px;'>{translate('data_sources')}</div>", unsafe_allow_html=True)
 
 # ==========================================
 # 4. MAIN AREA
 # ==========================================
 
-st.markdown(f"## {t('main_title')}")
-st.markdown(f"<div style='color:#8892A4;margin-bottom:24px;'>{t('main_subtitle')}</div>", unsafe_allow_html=True)
+st.markdown(f"## {translate('main_title')}")
+st.markdown(f"<div style='color:#8892A4;margin-bottom:24px;'>{translate('main_subtitle')}</div>", unsafe_allow_html=True)
 
 # Filter based on sidebar date range
 df = df_full.filter(
@@ -440,13 +442,13 @@ col_map = {
         "vat": "diesel_vat", "ebv": "diesel_ebv", "co2": "diesel_co2", "energy": "diesel_energy"
     }
 }
-p_col = col_map[fuel_key]["price"]
+pump_price_col = col_map[fuel_key]["price"]
 
 # Dynamically override the margin column based on selection
 if spread_baseline_mode == "refined" and f"retail_margin_{fuel_key}" in df.columns:
-    m_col = f"retail_margin_{fuel_key}"
+    margin_col = f"retail_margin_{fuel_key}"
 else:
-    m_col = col_map[fuel_key]["margin"]
+    margin_col = col_map[fuel_key]["margin"]
 
 vat_col = col_map[fuel_key]["vat"]
 ebv_col = col_map[fuel_key]["ebv"]
@@ -475,9 +477,9 @@ df["total_tax"] = df[vat_col] + df[ebv_col] + df[co2_col] + df[energy_col]
 
 # Calculate correlation (lagged by 2 days)
 if len(df) > 10:
-    corr_df = df_full.select(["Raw_Material_EUR_per_Liter", p_col]).drop_nulls().to_pandas()
+    corr_df = df_full.select(["Raw_Material_EUR_per_Liter", pump_price_col]).drop_nulls().to_pandas()
     # Shift Brent by 2 days forward to align past Brent with today's Pump
-    corr_val = corr_df["Raw_Material_EUR_per_Liter"].shift(2).corr(corr_df[p_col])
+    corr_val = corr_df["Raw_Material_EUR_per_Liter"].shift(2).corr(corr_df[pump_price_col])
 else:
     corr_val = 0.0
 
@@ -485,42 +487,42 @@ else:
 kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
 
 current_raw  = df["Raw_Material_EUR_per_Liter"].iloc[-1]
-current_pump = df[p_col].iloc[-1]
-current_marg = df[m_col].iloc[-1]
+current_pump = df[pump_price_col].iloc[-1]
+current_marg = df[margin_col].iloc[-1]
 
 pre_disc_start, pre_disc_end, pre_disc = stable_pre_event_margin_baseline(
-    df_full, m_col, date(2022, 6, 1)
+    df_full, margin_col, date(2022, 6, 1)
 )
-disc_marg = mean_for_date_window(df_full, m_col, date(2022, 6, 1), date(2022, 8, 31))
+disc_marg = mean_for_date_window(df_full, margin_col, date(2022, 6, 1), date(2022, 8, 31))
 delta_marg = disc_marg - pre_disc if not (pre_disc != pre_disc or disc_marg != disc_marg) else 0
 
 with kpi1:
     st.markdown(f"""<div class='kpi-card'>
-        <div class='kpi-label'>{t('brent')}</div>
+        <div class='kpi-label'>{translate('brent')}</div>
         <div class='kpi-value'>€{current_raw:.3f}</div>
-        <div class='kpi-subtitle'>{t('raw_material_cost')}</div>
+        <div class='kpi-subtitle'>{translate('raw_material_cost')}</div>
     </div>""", unsafe_allow_html=True)
 
 with kpi2:
     st.markdown(f"""<div class='kpi-card'>
-        <div class='kpi-label'>{t('pump_price')} ({fuel_type})</div>
+        <div class='kpi-label'>{translate('pump_price')} ({fuel_type})</div>
         <div class='kpi-value'>€{current_pump:.3f}</div>
-        <div class='kpi-subtitle'>{t('national_avg')}</div>
+        <div class='kpi-subtitle'>{translate('national_avg')}</div>
     </div>""", unsafe_allow_html=True)
 
 with kpi3:
     st.markdown(f"""<div class='kpi-card'>
-        <div class='kpi-label'>{t('net_spread')}</div>
+        <div class='kpi-label'>{translate('net_spread')}</div>
         <div class='kpi-value'>€{current_marg:.3f}</div>
-        <div class='kpi-subtitle'>{t('spread_kpi_note')}</div>
+        <div class='kpi-subtitle'>{translate('spread_kpi_note')}</div>
     </div>""", unsafe_allow_html=True)
 
 with kpi4:
     sign = "+" if delta_marg > 0 else ""
     st.markdown(f"""<div class='kpi-card'>
-        <div class='kpi-label'>{t('spread_delta_discount_1')}</div>
+        <div class='kpi-label'>{translate('spread_delta_discount_1')}</div>
         <div class='kpi-value'>{sign}€{delta_marg:.3f}</div>
-        <div class='kpi-subtitle'>{t('pre_discount_compared')}</div>
+        <div class='kpi-subtitle'>{translate('pre_discount_compared')}</div>
     </div>""", unsafe_allow_html=True)
 
 with kpi5:
@@ -537,11 +539,11 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 # ── Tabs ────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab_brand, tab4 = st.tabs([
-    t("tab_brent"),
-    t("tab_spread"),
-    t("tab_rhythm"),
-    t("tab_brand"),
-    t("tab_location"),
+    translate("tab_brent"),
+    translate("tab_spread"),
+    translate("tab_rhythm"),
+    translate("tab_brand"),
+    translate("tab_location"),
 ])
 
 # ── Helper: Add Discount Highlight Bands ─────────────────────────────────────
@@ -605,7 +607,7 @@ def calculate_tax_break_pass_through(source_df: pl.DataFrame) -> list[dict[str, 
         pre_start = start - timedelta(days=period_days)
         pre_end = start - timedelta(days=1)
         spread_pre_start, spread_pre_end, spread_baseline = stable_pre_event_margin_baseline(
-            analysis_df, m_col, start
+            analysis_df, margin_col, start
         )
 
         pre_df = analysis_df.filter((pl.col("date") >= pre_start) & (pl.col("date") <= pre_end))
@@ -613,9 +615,9 @@ def calculate_tax_break_pass_through(source_df: pl.DataFrame) -> list[dict[str, 
         if pre_df.is_empty() or discount_df.is_empty():
             continue
 
-        pump_drop = pre_df[p_col].mean() - discount_df[p_col].mean()
+        pump_drop = pre_df[pump_price_col].mean() - discount_df[pump_price_col].mean()
         tax_drop = pre_df["selected_total_tax"].mean() - discount_df["selected_total_tax"].mean()
-        discount_spread = discount_df[m_col].mean()
+        discount_spread = discount_df[margin_col].mean()
         spread_change = (
             discount_spread - spread_baseline
             if not (spread_baseline != spread_baseline or discount_spread is None)
@@ -657,10 +659,10 @@ def calculate_brand_policy_rows(
             continue
 
         baseline_start, baseline_end, baseline_margin = stable_pre_event_margin_baseline(
-            group_df, m_col, event_start
+            group_df, margin_col, event_start
         )
-        discount_margin = mean_for_date_window(group_df, m_col, event_start, actual_end)
-        discount_price = mean_for_date_window(group_df, p_col, event_start, actual_end)
+        discount_margin = mean_for_date_window(group_df, margin_col, event_start, actual_end)
+        discount_price = mean_for_date_window(group_df, pump_price_col, event_start, actual_end)
         station_count = group_df["station_count"].max()
         if baseline_margin != baseline_margin or discount_margin != discount_margin:
             continue
@@ -703,10 +705,10 @@ def evidence_label(p_value: float) -> str:
     if p_value != p_value:
         return "n/a"
     if p_value < 0.01:
-        return t("strong")
+        return translate("strong")
     if p_value < 0.05:
-        return t("moderate")
-    return t("weak")
+        return translate("moderate")
+    return translate("weak")
 
 
 def calculate_switch_event_study(source_df: pl.DataFrame, window_days: int) -> list[dict[str, object]]:
@@ -720,7 +722,7 @@ def calculate_switch_event_study(source_df: pl.DataFrame, window_days: int) -> l
     ]
     analysis_df = source_df.with_columns([
         (pl.col(vat_col) + pl.col(ebv_col) + pl.col(co2_col) + pl.col(energy_col)).alias("selected_total_tax"),
-        (pl.col(p_col) - pl.col("Raw_Material_EUR_per_Liter")).alias("raw_adjusted_price"),
+        (pl.col(pump_price_col) - pl.col("Raw_Material_EUR_per_Liter")).alias("raw_adjusted_price"),
     ])
     rows = []
 
@@ -738,7 +740,7 @@ def calculate_switch_event_study(source_df: pl.DataFrame, window_days: int) -> l
         if before_df.height < 2 or after_df.height < 2:
             continue
 
-        pump_change, pump_p = welch_normal_p_value(before_df[p_col].to_list(), after_df[p_col].to_list())
+        pump_change, pump_p = welch_normal_p_value(before_df[pump_price_col].to_list(), after_df[pump_price_col].to_list())
         raw_adjusted_change, raw_adjusted_p = welch_normal_p_value(
             before_df["raw_adjusted_price"].to_list(),
             after_df["raw_adjusted_price"].to_list(),
@@ -764,8 +766,8 @@ def calculate_switch_event_study(source_df: pl.DataFrame, window_days: int) -> l
 
 def get_event_study_timeline(
     source_df: pl.DataFrame,
-    p_col: str,
-    m_col: str,
+    pump_price_col: str,
+    margin_col: str,
     window_days: int = 60,
     normalize: bool = True
 ) -> pl.DataFrame:
@@ -811,13 +813,13 @@ def get_event_study_timeline(
         # We accept this contains any anticipation moves — the chart trajectory itself
         # will visually reveal if prices were already trending before t=0.
         pre_df = sub_df.filter(pl.col("date") < effective_date)
-        baseline_mean_spread = pre_df[m_col].mean() if not pre_df.is_empty() else 0.0
-        baseline_mean_pump   = pre_df[p_col].mean() if not pre_df.is_empty() else 0.0
+        baseline_mean_spread = pre_df[margin_col].mean() if not pre_df.is_empty() else 0.0
+        baseline_mean_pump   = pre_df[pump_price_col].mean() if not pre_df.is_empty() else 0.0
 
         for row in sub_df.iter_rows(named=True):
             rel_day    = (row["date"] - effective_date).days
-            spread_val = row[m_col]
-            pump_val   = row[p_col]
+            spread_val = row[margin_col]
+            pump_val   = row[pump_price_col]
 
             if normalize:
                 spread_val -= baseline_mean_spread
@@ -846,15 +848,15 @@ def get_event_study_timeline(
 # ──────────────────────────────────────────────────────────────────────────────
 with tab1:
     with st.container():
-        st.markdown(f"<h4 style='margin:0;'>{t('brent_vs_pump_title')} — {fuel_type}</h4>", unsafe_allow_html=True)
-        st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('brent_vs_pump_note')}</span>", unsafe_allow_html=True)
+        st.markdown(f"<h4 style='margin:0;'>{translate('brent_vs_pump_title')} — {fuel_type}</h4>", unsafe_allow_html=True)
+        st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{translate('brent_vs_pump_note')}</span>", unsafe_allow_html=True)
 
         fig = go.Figure()
         
         # Base Layer: Brent Crude
         fig.add_trace(go.Scatter(
             x=df["date"], y=df["Raw_Material_EUR_per_Liter"],
-            name=t("brent"),
+            name=translate("brent"),
             mode="lines",
             fill="tozeroy" if tax_viz == "hide" else None,
             fillcolor="rgba(34,197,94,0.08)" if tax_viz == "hide" else None,
@@ -866,55 +868,55 @@ with tab1:
             if spread_baseline_mode == "refined" and f"refining_spread_{fuel_key}" in df.columns:
                 # 1. Refining Margin Layer
                 ref_spread_col = f"refining_spread_{fuel_key}"
-                refining_pct = (df[ref_spread_col] / df[p_col]) * 100
+                refining_pct = (df[ref_spread_col] / df[pump_price_col]) * 100
                 fig.add_trace(go.Scatter(
                     x=df["date"], y=df[ref_spread_col],
-                    name=t("refining_trace"),
+                    name=translate("refining_trace"),
                     mode="lines",
                     line=dict(width=0),
                     fillcolor="rgba(148, 163, 184, 0.45)", # Slate-400
                     stackgroup="one",
-                    hovertemplate=t("refining_trace") + ": €%{y:.3f} (%{customdata:.1f}%)<extra></extra>",
+                    hovertemplate=translate("refining_trace") + ": €%{y:.3f} (%{customdata:.1f}%)<extra></extra>",
                     customdata=refining_pct
                 ))
                 
                 # 2. Net Retail Spread Layer
                 retail_margin_col = f"retail_margin_{fuel_key}"
-                retail_pct = (df[retail_margin_col] / df[p_col]) * 100
+                retail_pct = (df[retail_margin_col] / df[pump_price_col]) * 100
                 fig.add_trace(go.Scatter(
                     x=df["date"], y=df[retail_margin_col],
-                    name=t("retail_trace"),
+                    name=translate("retail_trace"),
                     mode="lines",
                     line=dict(width=0),
                     fillcolor="rgba(245, 166, 35, 0.6)", # Amber
                     stackgroup="one",
-                    hovertemplate=t("retail_trace") + ": €%{y:.3f} (%{customdata:.1f}%)<extra></extra>",
+                    hovertemplate=translate("retail_trace") + ": €%{y:.3f} (%{customdata:.1f}%)<extra></extra>",
                     customdata=retail_pct
                 ))
             else:
                 # Add standard net product spread layer
-                margin_pct = (df[m_col] / df[p_col]) * 100
+                margin_pct = (df[margin_col] / df[pump_price_col]) * 100
                 fig.add_trace(go.Scatter(
-                    x=df["date"], y=df[m_col],
-                    name=t("spread_trace"),
+                    x=df["date"], y=df[margin_col],
+                    name=translate("spread_trace"),
                     mode="lines",
                     line=dict(width=0),
                     fillcolor="rgba(245, 166, 35, 0.6)", # Amber
                     stackgroup="one",
-                    hovertemplate=t("spread_hover") + ": €%{y:.3f} (%{customdata:.1f}%)<extra></extra>",
+                    hovertemplate=translate("spread_hover") + ": €%{y:.3f} (%{customdata:.1f}%)<extra></extra>",
                     customdata=margin_pct
                 ))
 
         if tax_viz == "combined":
-            tax_pct = (df["total_tax"] / df[p_col]) * 100
+            tax_pct = (df["total_tax"] / df[pump_price_col]) * 100
             fig.add_trace(go.Scatter(
                 x=df["date"], y=df["total_tax"],
-                name=t("total_taxes"),
+                name=translate("total_taxes"),
                 mode="lines",
                 line=dict(width=0),
                 fillcolor="rgba(100, 116, 139, 0.4)", # Slate-500
                 stackgroup="one",
-                hovertemplate=t("total_taxes") + ": €%{y:.3f} (%{customdata:.1f}%)<extra></extra>",
+                hovertemplate=translate("total_taxes") + ": €%{y:.3f} (%{customdata:.1f}%)<extra></extra>",
                 customdata=tax_pct
             ))
             
@@ -922,14 +924,14 @@ with tab1:
             # Plot in order from bottom to top: EBV -> CO2 -> Energy -> VAT
             # using a cohesive slate/indigo gradient
             tax_layers = [
-                (ebv_col, t("ebv"), "#334155"),       # Slate-700
-                (co2_col, t("co2"), "#475569"),       # Slate-600
-                (energy_col, t("energy_tax"), "#94a3b8"),   # Slate-400
-                (vat_col, t("vat"), "#64748b")        # Slate-500
+                (ebv_col, translate("ebv"), "#334155"),       # Slate-700
+                (co2_col, translate("co2"), "#475569"),       # Slate-600
+                (energy_col, translate("energy_tax"), "#94a3b8"),   # Slate-400
+                (vat_col, translate("vat"), "#64748b")        # Slate-500
             ]
             
             for col, name, color in tax_layers:
-                layer_pct = (df[col] / df[p_col]) * 100
+                layer_pct = (df[col] / df[pump_price_col]) * 100
                 fig.add_trace(go.Scatter(
                     x=df["date"], y=df[col],
                     name=name,
@@ -943,8 +945,8 @@ with tab1:
 
         # Top Layer: Pump Price (Independent line, not stacked)
         fig.add_trace(go.Scatter(
-            x=df["date"], y=df[p_col],
-            name=f"{t('pump_price')} — {fuel_type}",
+            x=df["date"], y=df[pump_price_col],
+            name=f"{translate('pump_price')} — {fuel_type}",
             mode="lines",
             line=dict(color=ACCENT, width=2.5),
         ))
@@ -952,17 +954,17 @@ with tab1:
         fig = add_discount_bands(fig)
         
         # Determine max Y axis to keep charts stable
-        max_y = df[p_col].max() * 1.1
+        max_y = df[pump_price_col].max() * 1.1
         fig.update_layout(**PLOT_LAYOUT, height=480, yaxis_title="€ / Liter", yaxis_range=[0, max_y])
         st.plotly_chart(fig, use_container_width=True, config=PLOT_CONFIG)
 
 
             
         if show_tax_trend:
-            st.markdown(f"#### {t('tax_burden_title')}")
-            st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('tax_burden_note')}</span>", unsafe_allow_html=True)
+            st.markdown(f"#### {translate('tax_burden_title')}")
+            st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{translate('tax_burden_note')}</span>", unsafe_allow_html=True)
             
-            tax_pct_series = (df["total_tax"] / df[p_col]) * 100
+            tax_pct_series = (df["total_tax"] / df[pump_price_col]) * 100
             rolling_avg = tax_pct_series.rolling(window=90, min_periods=1).mean()
             
             fig_trend = go.Figure()
@@ -983,7 +985,7 @@ with tab1:
             threshold_label = " 50% Threshold" if lang == "en" else " 50% Grenze"
             fig_trend.add_hline(y=50, line_dash="dot", line_color=BLUE, line_width=1,
                    annotation_text=threshold_label, annotation_font_color=BLUE)
-            fig_trend.update_layout(**PLOT_LAYOUT, height=350, yaxis_title=t("tax_percent"), yaxis_ticksuffix="%")
+            fig_trend.update_layout(**PLOT_LAYOUT, height=350, yaxis_title=translate("tax_percent"), yaxis_ticksuffix="%")
             st.plotly_chart(fig_trend, use_container_width=True, config=PLOT_CONFIG)
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -991,40 +993,40 @@ with tab1:
 # ──────────────────────────────────────────────────────────────────────────────
 with tab2:
     if spread_baseline_mode == "refined":
-        st.markdown(f"#### {t('retail_spread_title')}")
-        st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('retail_spread_note')}</span>", unsafe_allow_html=True)
+        st.markdown(f"#### {translate('retail_spread_title')}")
+        st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{translate('retail_spread_note')}</span>", unsafe_allow_html=True)
     else:
-        st.markdown(f"#### {t('spread_title')}")
-        st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('spread_note')}</span>", unsafe_allow_html=True)
+        st.markdown(f"#### {translate('spread_title')}")
+        st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{translate('spread_note')}</span>", unsafe_allow_html=True)
 
     fig2 = go.Figure()
     fig2.add_trace(go.Scatter(
-        x=df["date"], y=df[m_col],
-        name=t("spread_trace"), fill="tozeroy",
+        x=df["date"], y=df[margin_col],
+        name=translate("spread_trace"), fill="tozeroy",
         fillcolor="rgba(245,166,35,0.07)",
         line=dict(color=ACCENT, width=2.5),
     ))
     # Baseline reference line
-    baseline = df[m_col].mean()
+    baseline = df[margin_col].mean()
     fig2.add_hline(y=baseline, line_dash="dot", line_color=BLUE, line_width=1,
-                   annotation_text=f" {t('historical_avg')}: €{baseline:.3f}", annotation_font_color=BLUE)
+                   annotation_text=f" {translate('historical_avg')}: €{baseline:.3f}", annotation_font_color=BLUE)
     fig2 = add_discount_bands(fig2)
-    fig2.update_layout(**PLOT_LAYOUT, height=400, yaxis_title=f"{t('net_spread')} (€/L)")
+    fig2.update_layout(**PLOT_LAYOUT, height=400, yaxis_title=f"{translate('net_spread')} (€/L)")
     st.plotly_chart(fig2, use_container_width=True, config=PLOT_CONFIG)
 
     # Sub-metrics below chart
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.metric(t("pre_discount_avg"), f"€{pre_disc:.4f}")
+        st.metric(translate("pre_discount_avg"), f"€{pre_disc:.4f}")
         st.caption(f"{pre_disc_start:%Y-%m-%d} – {pre_disc_end:%Y-%m-%d}")
     with c2:
         sign = "+" if delta_marg > 0 else ""
-        st.metric(t("during_discount_1"), f"€{disc_marg:.4f}", f"{sign}€{delta_marg:.4f}", delta_color="inverse")
+        st.metric(translate("during_discount_1"), f"€{disc_marg:.4f}", f"{sign}€{delta_marg:.4f}", delta_color="inverse")
     with c3:
-        st.metric(t("historical_range"), f"€{df[m_col].min():.3f} – €{df[m_col].max():.3f}")
+        st.metric(translate("historical_range"), f"€{df[margin_col].min():.3f} – €{df[margin_col].max():.3f}")
 
-    st.markdown(f"#### {t('pass_title')}")
-    st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('pass_note')}</span>", unsafe_allow_html=True)
+    st.markdown(f"#### {translate('pass_title')}")
+    st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{translate('pass_note')}</span>", unsafe_allow_html=True)
 
     pass_rows = calculate_tax_break_pass_through(df_full)
     if pass_rows:
@@ -1032,7 +1034,7 @@ with tab2:
         fig_pass.add_trace(go.Bar(
             x=[row["event"] for row in pass_rows],
             y=[row["pump_drop"] for row in pass_rows],
-            name=t("pump_drop"),
+            name=translate("pump_drop"),
             marker_color=BLUE,
             text=[f"€{row['pump_drop']:.3f}" for row in pass_rows],
             textposition="outside",
@@ -1040,7 +1042,7 @@ with tab2:
         fig_pass.add_trace(go.Bar(
             x=[row["event"] for row in pass_rows],
             y=[row["tax_drop"] for row in pass_rows],
-            name=t("tax_drop"),
+            name=translate("tax_drop"),
             marker_color=ACCENT,
             text=[f"€{row['tax_drop']:.3f}" for row in pass_rows],
             textposition="outside",
@@ -1057,19 +1059,19 @@ with tab2:
         for row in pass_rows:
             pass_pct = row["pass_through"] * 100 if row["pass_through"] is not None else None
             table_rows.append({
-                t("event"): row["event"],
-                t("comparison_window"): f"{row['baseline']} vs. {row['window']}",
-                t("spread_baseline"): row["spread_baseline"],
-                t("pump_drop"): f"€{row['pump_drop']:.3f}/L",
-                t("tax_drop"): f"€{row['tax_drop']:.3f}/L",
-                t("pass_through"): f"{pass_pct:.1f}%" if pass_pct is not None else "n/a",
-                t("spread_change"): f"{row['spread_change']:+.3f}/L",
-                t("raw_change"): f"{row['raw_change']:+.3f}/L",
+                translate("event"): row["event"],
+                translate("comparison_window"): f"{row['baseline']} vs. {row['window']}",
+                translate("spread_baseline"): row["spread_baseline"],
+                translate("pump_drop"): f"€{row['pump_drop']:.3f}/L",
+                translate("tax_drop"): f"€{row['tax_drop']:.3f}/L",
+                translate("pass_through"): f"{pass_pct:.1f}%" if pass_pct is not None else "n/a",
+                translate("spread_change"): f"{row['spread_change']:+.3f}/L",
+                translate("raw_change"): f"{row['raw_change']:+.3f}/L",
             })
         st.dataframe(table_rows, hide_index=True, width="stretch")
 
-    st.markdown(f"#### {t('event_study_title')}")
-    st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('event_study_note')}</span>", unsafe_allow_html=True)
+    st.markdown(f"#### {translate('event_study_title')}")
+    st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{translate('event_study_note')}</span>", unsafe_allow_html=True)
 
     # Controls row
     c_evt, c_win, c_opts = st.columns([2, 2, 1])
@@ -1083,9 +1085,9 @@ with tab2:
         )
     with c_win:
         event_window_days = st.slider(
-            t("event_window"),
+            translate("event_window"),
             min_value=15, max_value=60, value=45, step=1,
-            help=t("event_window_help"),
+            help=translate("event_window_help"),
         )
     with c_opts:
         normalize_opt   = st.checkbox("Normalized" if lang == "en" else "Normalisiert", value=True,
@@ -1094,7 +1096,7 @@ with tab2:
                                        help="Show official legislative dates as vertical markers." if lang == "en" else "Offizielle Gesetzgebungsdaten als Markierungen anzeigen.")
 
     timeline_data = get_event_study_timeline(
-        df_full, p_col, m_col, window_days=event_window_days, normalize=normalize_opt
+        df_full, pump_price_col, margin_col, window_days=event_window_days, normalize=normalize_opt
     )
 
     if not timeline_data.is_empty():
@@ -1214,13 +1216,13 @@ with tab2:
 # TAB 3: Daily Rhythm
 # ──────────────────────────────────────────────────────────────────────────────
 with tab3:
-    st.markdown(f"#### {t('rhythm_title')}")
-    st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('rhythm_note')}</span>", unsafe_allow_html=True)
+    st.markdown(f"#### {translate('rhythm_title')}")
+    st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{translate('rhythm_note')}</span>", unsafe_allow_html=True)
 
     intraday_df = load_intraday_data()
 
     if intraday_df is None:
-        st.warning(t("intraday_missing"))
+        st.warning(translate("intraday_missing"))
         st.stop()
     
     # Define timeframes using strict Polars filtering
@@ -1234,10 +1236,10 @@ with tab3:
     }
     
     selected_timeframes = st.multiselect(
-        t("compare_timeframes"),
+        translate("compare_timeframes"),
         options=list(timeframes.keys()),
         default=["all_time"],
-        format_func=lambda key: t(key),
+        format_func=lambda key: translate(key),
     )
     
     fig3 = go.Figure()
@@ -1262,7 +1264,7 @@ with tab3:
         
         fig3.add_trace(go.Scatter(
             x=hourly["hour"], y=hourly["avg_price"],
-            name=t(tf_name),
+            name=translate(tf_name),
             mode="lines+markers" if is_primary else "lines",
             line=dict(color=color, width=3 if is_primary else 2),
             marker=dict(size=7, color=color) if is_primary else None,
@@ -1277,15 +1279,15 @@ with tab3:
 
     if primary_stats is not None:
         min_overall, max_overall, best_h_overall, worst_h_overall = primary_stats
-        fig3.add_annotation(x=worst_h_overall, y=max_overall + 0.005, text=f"{t('peak')} {worst_h_overall:02d}:00 (€{max_overall:.2f})", showarrow=True, arrowhead=2, arrowcolor=colors[0], font=dict(color=colors[0]))
-        fig3.add_annotation(x=best_h_overall, y=min_overall - 0.01, text=f"{t('lowest')} {best_h_overall:02d}:00 (€{min_overall:.2f})", showarrow=True, arrowhead=2, arrowcolor=colors[0], font=dict(color=colors[0]))
+        fig3.add_annotation(x=worst_h_overall, y=max_overall + 0.005, text=f"{translate('peak')} {worst_h_overall:02d}:00 (€{max_overall:.2f})", showarrow=True, arrowhead=2, arrowcolor=colors[0], font=dict(color=colors[0]))
+        fig3.add_annotation(x=best_h_overall, y=min_overall - 0.01, text=f"{translate('lowest')} {best_h_overall:02d}:00 (€{min_overall:.2f})", showarrow=True, arrowhead=2, arrowcolor=colors[0], font=dict(color=colors[0]))
 
-    fig3.update_layout(**PLOT_LAYOUT, height=400, xaxis_title=t("hour_of_day"), yaxis_title=t("avg_pump_price"))
+    fig3.update_layout(**PLOT_LAYOUT, height=400, xaxis_title=translate("hour_of_day"), yaxis_title=translate("avg_pump_price"))
     fig3.update_xaxes(tickmode="linear", dtick=2, gridcolor="rgba(255,255,255,0.05)")
     st.plotly_chart(fig3, use_container_width=True, config=PLOT_CONFIG)
 
     if primary_stats is not None:
-        st.info(f"**{t('lowest_info')}:** {best_h_overall:02d}:00 (≈€{(max_overall - min_overall):.2f}/L {t('below_peak')} {worst_h_overall:02d}:00). {t('per_tank')} ~**€{50*(max_overall-min_overall):.1f}**.")
+        st.info(f"**{translate('lowest_info')}:** {best_h_overall:02d}:00 (≈€{(max_overall - min_overall):.2f}/L {translate('below_peak')} {worst_h_overall:02d}:00). {translate('per_tank')} ~**€{50*(max_overall-min_overall):.1f}**.")
 
         # Legislative context callout (KPAnG 12:00 PM regulation)
         if lang == "en":
@@ -1319,33 +1321,33 @@ with tab3:
 # TAB 4: Brand Comparison
 # ──────────────────────────────────────────────────────────────────────────────
 with tab_brand:
-    st.markdown(f"#### {t('brand_title')}")
-    st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('brand_note')}</span>", unsafe_allow_html=True)
+    st.markdown(f"#### {translate('brand_title')}")
+    st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{translate('brand_note')}</span>", unsafe_allow_html=True)
 
     brand_df_full = load_brand_daily_data(smoothing_days=smoothing_days)
 
     if brand_df_full is None:
-        st.warning(t("brand_data_missing"))
+        st.warning(translate("brand_data_missing"))
     else:
         level_options = {
-            "brand": t("brand_level_brand"),
-            "owner": t("brand_level_owner"),
+            "brand": translate("brand_level_brand"),
+            "owner": translate("brand_level_owner"),
         }
         policy_windows = {
-            "discount_2022": (t("tankrabatt_1"), date(2022, 6, 1), date(2022, 8, 31)),
-            "discount_2026": (t("tankrabatt_2"), date(2026, 5, 1), date(2026, 6, 30)),
+            "discount_2022": (translate("tankrabatt_1"), date(2022, 6, 1), date(2022, 8, 31)),
+            "discount_2026": (translate("tankrabatt_2"), date(2026, 5, 1), date(2026, 6, 30)),
         }
 
         c_level, c_window = st.columns([2, 1])
         with c_level:
             selected_level = st.selectbox(
-                t("brand_level"),
+                translate("brand_level"),
                 options=list(level_options),
                 format_func=lambda key: level_options[key],
             )
         with c_window:
             selected_policy = st.selectbox(
-                t("policy_window"),
+                translate("policy_window"),
                 options=list(policy_windows),
                 format_func=lambda key: policy_windows[key][0],
             )
@@ -1360,10 +1362,10 @@ with tab_brand:
         default_groups = group_options[:8]
 
         selected_groups = st.multiselect(
-            t("brand_groups"),
+            translate("brand_groups"),
             options=group_options,
             default=default_groups,
-            help=t("brand_groups_help"),
+            help=translate("brand_groups_help"),
         )
 
         if selected_groups:
@@ -1378,9 +1380,9 @@ with tab_brand:
             if not visible_brand_df.is_empty():
                 trend_pd = visible_brand_df.sort(["comparison_group", "date"]).to_pandas()
                 # Compute daily national average across all selected groups to normalize
-                daily_national_avg = trend_pd.groupby("date")[m_col].mean().rename("national_avg")
+                daily_national_avg = trend_pd.groupby("date")[margin_col].mean().rename("national_avg")
                 trend_pd = trend_pd.merge(daily_national_avg, on="date", how="left")
-                trend_pd["margin_vs_avg"] = (trend_pd[m_col] - trend_pd["national_avg"]) * 100  # convert to euro-cents
+                trend_pd["margin_vs_avg"] = (trend_pd[margin_col] - trend_pd["national_avg"]) * 100  # convert to euro-cents
 
                 for idx, group_name in enumerate(selected_groups):
                     group_pd = trend_pd[trend_pd["comparison_group"] == group_name]
@@ -1403,7 +1405,7 @@ with tab_brand:
             fig_brand.update_layout(
                 **PLOT_LAYOUT,
                 height=420,
-                title=t("brand_margin_trend"),
+                title=translate("brand_margin_trend"),
                 yaxis_title="Margin vs. National Avg (ct/L)" if lang == "en" else "Spanne vs. Bundesschnitt (ct/L)",
             )
             st.plotly_chart(fig_brand, use_container_width=True, config=PLOT_CONFIG)
@@ -1416,8 +1418,8 @@ with tab_brand:
                 planned_end,
             )
 
-            st.markdown(f"#### {t('brand_delta_title')}")
-            st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('brand_delta_note')}</span>", unsafe_allow_html=True)
+            st.markdown(f"#### {translate('brand_delta_title')}")
+            st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{translate('brand_delta_note')}</span>", unsafe_allow_html=True)
 
             if brand_rows:
                 fig_brand_delta = go.Figure(go.Bar(
@@ -1431,7 +1433,7 @@ with tab_brand:
                 fig_brand_delta.update_layout(
                     **PLOT_LAYOUT,
                     height=380,
-                    yaxis_title=f"{t('delta_margin')} (€/L)",
+                    yaxis_title=f"{translate('delta_margin')} (€/L)",
                     showlegend=False,
                 )
                 st.plotly_chart(fig_brand_delta, use_container_width=True, config=PLOT_CONFIG)
@@ -1439,26 +1441,26 @@ with tab_brand:
                 table_rows = []
                 for row in brand_rows:
                     table_rows.append({
-                        t("group"): row["group"],
-                        t("stations"): f"{row['station_count']:,}",
-                        t("baseline_margin"): f"€{row['baseline_margin']:.4f}/L",
-                        t("discount_margin"): f"€{row['discount_margin']:.4f}/L",
-                        t("delta_margin"): f"{row['delta_margin']:+.4f}/L",
-                        t("discount_price"): f"€{row['discount_price']:.4f}/L",
-                        t("spread_baseline"): row["baseline_window"],
-                        t("comparison_window"): row["discount_window"],
+                        translate("group"): row["group"],
+                        translate("stations"): f"{row['station_count']:,}",
+                        translate("baseline_margin"): f"€{row['baseline_margin']:.4f}/L",
+                        translate("discount_margin"): f"€{row['discount_margin']:.4f}/L",
+                        translate("delta_margin"): f"{row['delta_margin']:+.4f}/L",
+                        translate("discount_price"): f"€{row['discount_price']:.4f}/L",
+                        translate("spread_baseline"): row["baseline_window"],
+                        translate("comparison_window"): row["discount_window"],
                     })
                 st.dataframe(table_rows, hide_index=True, width="stretch")
             else:
-                st.info(t("brand_data_missing"))
+                st.info(translate("brand_data_missing"))
         else:
-            st.info(t("brand_groups_help"))
+            st.info(translate("brand_groups_help"))
 
 # TAB 5: Regional Pricing Analysis
 # ──────────────────────────────────────────────────────────────────────────────
 with tab4:
-    st.markdown(f"#### {t('location_title')}")
-    st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('location_note')}</span>", unsafe_allow_html=True)
+    st.markdown(f"#### {translate('location_title')}")
+    st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{translate('location_note')}</span>", unsafe_allow_html=True)
 
     reg_df = load_regional_daily_data(smoothing_days=smoothing_days)
     if reg_df is not None:
@@ -1526,27 +1528,27 @@ with tab4:
 
             with c1:
                 st.metric(
-                    t("most_expensive"),
+                    translate("most_expensive"),
                     most_exp["region"],
                     f"+{most_exp['avg_delta_ct']:.2f} ct/L",
                     delta_color="inverse"
                 )
             with c2:
                 st.metric(
-                    t("cheapest"),
+                    translate("cheapest"),
                     cheapest["region"],
                     f"{cheapest['avg_delta_ct']:.2f} ct/L",
                     delta_color="normal"
                 )
             with c3:
                 st.metric(
-                    t("max_regional_premium"),
+                    translate("max_regional_premium"),
                     f"{total_spread:.2f} ct/L",
                     f"{50 * total_spread / 100:.2f}/Tank" if lang == "en" else f"{50 * total_spread / 100:.2f}/Tank",
                 )
 
             # ── Time series: regional margin evolution (14-day smoothed) ──
-            st.markdown(f"#### {t('regional_spread_title')}")
+            st.markdown(f"#### {translate('regional_spread_title')}")
             reg_colors = [BLUE, ACCENT, ACCENT_ALT, DANGER, "#A78BFA", "#14B8A6", "#F97316", "#E879F9", "#6B7280", "#FBBF24"]
             regions_sorted = bar_data["region"].tolist()
 
@@ -1586,7 +1588,7 @@ with tab4:
                 )
                 st.plotly_chart(fig_reg_ts, use_container_width=True, config=PLOT_CONFIG)
         else:
-            st.info(t("regional_data_missing"))
+            st.info(translate("regional_data_missing"))
     else:
-        st.info(t("regional_data_missing"))
+        st.info(translate("regional_data_missing"))
 

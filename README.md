@@ -17,9 +17,12 @@ An interactive analytics pipeline and premium dashboard analyzing retail margins
 ---
 
 ## Directory Structure
+- `src/gasprice/` — Core Python package containing the ETL pipeline modules.
+- `scripts/run_pipeline.py` — Central orchestrator that runs all pipeline steps sequentially.
+- `scripts/exploratory/` — Diagnostic and exploratory analysis scripts.
 - `ui/04_app.py` — Streamlit dashboard containing the analytical tabs.
-- `start_dashboard.py` — Conveniency launcher script that automatically overrides headless settings to open the dashboard in your system's browser.
-- `scripts/` — Vectorized data cleaning and daily aggregation ETL scripts.
+- `ui/translations/` — Externalized i18n strings for the dashboard (`en.json`, `de.json`).
+- `start_dashboard.py` — Convenience launcher script that automatically overrides headless settings to open the dashboard in your system's browser.
 - `docs/` — Ground-truth documentation including legislative policy timelines, corporate brand ownership trees, and RAG strategy details.
 - `data/` — Storage folder for aggregated price statistics and macroeconomic baseline Parquet datasets.
 
@@ -42,23 +45,20 @@ python3 start_dashboard.py
 This script will automatically open the UI in your default web browser on `http://localhost:8501`.
 
 ### 3. Running the Data Update Pipeline
-To download the latest historical prices from Tankerkönig and update all dashboard metrics:
+To download the latest historical prices from Tankerkönig and update all dashboard metrics, run the orchestrator:
+
 ```bash
-# 1. Update Brent Crude & EUR/USD macro baseline
-python3 scripts/01_update_brent_crude.py
+python3 scripts/run_pipeline.py
+```
 
-# 2. Update refined product baselines
-python3 scripts/05_fetch_refined_product_baseline.py
+This executes all steps in order:
+1. Clean station metadata and map corporate/postcode boundaries
+2. Update Brent Crude & EUR/USD macro baseline
+3. Update refined product baselines
+4. Build consolidated dashboard datasets
+5. Rebuild local statistics for the Gas Station Finder
 
-# 3. Download daily price CSV logs (idempotent; skips existing)
-python3 scripts/03_download_pump_prices.py
-
-# 4. Clean stations metadata and map corporate/postcode boundaries
-python3 scripts/01_clean_stations.py
-
-# 5. Build consolidated dashboard datasets
-python3 scripts/04_build_dashboard_dataset.py
-
-# 6. Rebuild local statistics for the Gas Station Finder
-python3 scripts/07_station_price_stats.py
+You can also run individual steps as modules, e.g.:
+```bash
+PYTHONPATH=src python3 -m gasprice.update_brent_crude
 ```
