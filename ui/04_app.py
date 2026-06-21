@@ -19,14 +19,15 @@ from pathlib import Path
 DATA_DIR = Path(__file__).parent.parent / "data"
 INTRADAY_FILE = DATA_DIR / "processed_intraday.parquet"
 BRAND_DAILY_FILE = DATA_DIR / "processed_brand_daily_margins.parquet"
+REGIONAL_DAILY_FILE = DATA_DIR / "processed_regional_daily_margins.parquet"
 
 # ==========================================
 # 1. SETUP & CONFIGURATION
 # ==========================================
 
 st.set_page_config(
-    page_title="⛽ Tankpreise Analyse — Germany",
-    page_icon="⛽",
+    page_title="Tankpreise Analyse — Germany",
+    page_icon=None,
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={"About": "German Fuel Price Spread Analysis — Phase 4 Dashboard"}
@@ -181,11 +182,11 @@ TRANSLATIONS = {
         "spread_delta_discount_1": "Spread Δ During Discount 1",
         "pre_discount_compared": "365-day pre-tax baseline compared",
         "spread_kpi_note": "After taxes, before refining/retail costs",
-        "tab_brent": "📈  Brent vs Pump",
-        "tab_spread": "💰  Net Product Spread",
-        "tab_rhythm": "⏱️  Daily Rhythm",
-        "tab_brand": "🏷️  Brand Comparison",
-        "tab_location": "🗺️  Location Premium",
+        "tab_brent": "Brent vs Pump",
+        "tab_spread": "Net Product Spread",
+        "tab_rhythm": "Daily Rhythm",
+        "tab_brand": "Brand Comparison",
+        "tab_location": "Regional Pricing",
         "brent_vs_pump_title": "Retail Pump Price vs. Raw Brent Crude",
         "brent_vs_pump_note": "The gap between the two lines contains taxes plus the net product spread over Brent. That spread still includes refining, logistics, retail operations, overhead, and profit.",
         "spread_trace": "Net Product Spread",
@@ -284,11 +285,16 @@ TRANSLATIONS = {
         "discount_margin": "Tax-break margin",
         "delta_margin": "Margin delta",
         "discount_price": "Tax-break pump price",
-        "location_title": "Price Premium by Station Location Type",
-        "location_note": "Autobahn stations exploit captive motorists with no alternative. Rural and suburban stations compete more aggressively.",
-        "autobahn_premium": "Autobahn Premium vs Rural",
-        "tank_extra": "Cost per 50L Tank (Autobahn vs Rural)",
-        "captive_pricing": "Captive demand pricing",
+        "location_title": "Dynamic Regional Pricing Analysis",
+        "location_note": "Pricing trends across Germany's 10 major postal zones (PLZ 0-9) mapped dynamically from raw station data.",
+        "cheapest_region": "Cheapest region baseline: ",
+        "regional_spread_title": "Regional Pricing Comparison",
+        "most_expensive": "Most Expensive Region",
+        "cheapest": "Cheapest Region",
+        "max_regional_premium": "Max Regional Spread (Peak vs Trough)",
+        "regional_tank_extra": "Cost Delta per 50L Tank (Peak vs Trough)",
+        "regional_dynamics": "Regional price variation",
+        "regional_data_missing": "Regional daily data has not been built yet. Please run python3 scripts/04_build_dashboard_dataset.py.",
     },
     "de": {
         "language": "Sprache",
@@ -315,11 +321,11 @@ TRANSLATIONS = {
         "spread_delta_discount_1": "Spannenänderung im Tankrabatt 1",
         "pre_discount_compared": "Vergleich mit 365-Tage-Basis vor Steueränderung",
         "spread_kpi_note": "Nach Steuern, vor Raffinerie-/Handelskosten",
-        "tab_brent": "📈  Brent vs. Zapfsäule",
-        "tab_spread": "💰  Netto-Produktspanne",
-        "tab_rhythm": "⏱️  Tagesrhythmus",
-        "tab_brand": "🏷️  Markenvergleich",
-        "tab_location": "🗺️  Standortaufschlag",
+        "tab_brent": "Brent vs. Zapfsäule",
+        "tab_spread": "Netto-Produktspanne",
+        "tab_rhythm": "Tagesrhythmus",
+        "tab_brand": "Markenvergleich",
+        "tab_location": "Regionale Preise",
         "brent_vs_pump_title": "Zapfsäulenpreis vs. Brent-Rohöl",
         "brent_vs_pump_note": "Die Lücke zwischen den Linien enthält Steuern plus Netto-Produktspanne über Brent. Diese Spanne enthält weiterhin Raffinerie, Logistik, Stationsbetrieb, Gemeinkosten und Gewinn.",
         "spread_trace": "Netto-Produktspanne",
@@ -418,11 +424,16 @@ TRANSLATIONS = {
         "discount_margin": "Tankrabatt-Spanne",
         "delta_margin": "Spannen-Delta",
         "discount_price": "Tankrabatt-Zapfsäulenpreis",
-        "location_title": "Preisaufschlag nach Standorttyp",
-        "location_note": "Autobahnstationen bedienen gebundene Nachfrage mit weniger Alternativen. Ländliche und suburbane Stationen stehen stärker im Wettbewerb.",
-        "autobahn_premium": "Autobahnaufschlag vs. ländlich",
-        "tank_extra": "Mehrkosten pro 50L-Tank (Autobahn vs. ländlich)",
-        "captive_pricing": "Gebundene Nachfrage",
+        "location_title": "Dynamische regionale Preisanalyse",
+        "location_note": "Preistrends in Deutschlands 10 Postleitzonen (PLZ 0-9), direkt aggregiert aus den Tankstellendaten.",
+        "cheapest_region": "Günstigste Zone Basis: ",
+        "regional_spread_title": "Regionaler Preisvergleich",
+        "most_expensive": "Teuerste Region",
+        "cheapest": "Günstigste Region",
+        "max_regional_premium": "Maximale regionale Spanne (Spitze vs. Tal)",
+        "regional_tank_extra": "Kosten-Unterschied pro 50L Tank (Spitze vs. Tal)",
+        "regional_dynamics": "Regionale Preisdynamik",
+        "regional_data_missing": "Die regionalen Vergleichsdaten wurden noch nicht erzeugt. Bitte führe einmal python3 scripts/04_build_dashboard_dataset.py aus.",
     },
 }
 
@@ -513,13 +524,31 @@ def get_intraday_data():
     ]
     return pl.DataFrame({"Hour": hours, "Avg_Price_EUR": prices})
 
-@st.cache_data
-def get_geo_data():
-    return pl.DataFrame({
-        "Location":  ["Autobahn",  "City Centre", "Suburbs",  "Rural"],
-        "Avg_Price": [2.14,         1.87,          1.82,       1.76],
-        "Stations":  [1_800,        12_400,        8_600,      6_200],
-    })
+@st.cache_data(show_spinner="Loading regional pricing data…")
+def load_regional_daily_data(smoothing_days: int = 1):
+    if not REGIONAL_DAILY_FILE.exists():
+        return None
+    df = pl.read_parquet(REGIONAL_DAILY_FILE)
+    if smoothing_days > 1:
+        df = df.sort("date").with_columns([
+            pl.col("Raw_Material_EUR_per_Liter").rolling_mean(window_size=smoothing_days, min_periods=1).over("region").alias("Raw_Material_EUR_per_Liter"),
+            pl.col("brent_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).over("region").alias("brent_eur_liter"),
+            pl.col("e5_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).over("region").alias("e5_product_eur_liter"),
+            pl.col("e10_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).over("region").alias("e10_product_eur_liter"),
+            pl.col("diesel_product_eur_liter").rolling_mean(window_size=smoothing_days, min_periods=1).over("region").alias("diesel_product_eur_liter"),
+        ])
+        df = df.with_columns([
+            (pl.col("e5_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_e5"),
+            (pl.col("e10_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_e10"),
+            (pl.col("diesel_net_price") - pl.col("Raw_Material_EUR_per_Liter")).alias("margin_diesel"),
+            (pl.col("e5_net_price") - pl.col("e5_product_eur_liter")).alias("retail_margin_e5"),
+            (pl.col("e10_net_price") - pl.col("e10_product_eur_liter")).alias("retail_margin_e10"),
+            (pl.col("diesel_net_price") - pl.col("diesel_product_eur_liter")).alias("retail_margin_diesel"),
+            (pl.col("e5_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_e5"),
+            (pl.col("e10_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_e10"),
+            (pl.col("diesel_product_eur_liter") - pl.col("Raw_Material_EUR_per_Liter")).alias("refining_spread_diesel"),
+        ])
+    return df
 
 # ==========================================
 # 3. SIDEBAR — Controls
@@ -542,7 +571,7 @@ with st.sidebar:
     def t(key: str) -> str:
         return tx[key]
 
-    st.markdown(f"## ⛽ {t('app_short')}")
+    st.markdown(f"## {t('app_short')}")
     st.markdown(f"<div style='color:#8892A4;font-size:0.8rem;margin-bottom:16px;'>{t('app_subtitle')}</div>", unsafe_allow_html=True)
     st.divider()
 
@@ -1353,31 +1382,29 @@ with tab2:
             if event_type == "tax_cut":
                 # For a discount: did spread rise (retailers kept it) or stay flat/fall (passed through)?
                 if delta > 0.01:
-                    verdict_en = f"The spread **rose** by €{abs(delta):.3f}/L on average after t=0 — retailers widened their margin during the discount, absorbing part of the tax cut."
-                    verdict_de = f"Die Spanne **stieg** nach t=0 im Schnitt um €{abs(delta):.3f}/L — Tankstellen haben einen Teil des Steuerrabatts einbehalten."
+                    verdict_en = f"The spread <strong>rose</strong> by {abs(delta):.3f}/L on average after t=0 — retailers widened their margin during the discount, absorbing part of the tax cut."
+                    verdict_de = f"Die Spanne <strong>stieg</strong> nach t=0 im Schnitt um {abs(delta):.3f}/L — Tankstellen haben einen Teil des Steuerrabatts einbehalten."
                 elif delta < -0.005:
-                    verdict_en = f"The spread **fell** by €{abs(delta):.3f}/L on average after t=0 — the tax cut was passed through to consumers (and then some)."
-                    verdict_de = f"Die Spanne **fiel** nach t=0 im Schnitt um €{abs(delta):.3f}/L — der Steuerrabatt wurde an die Verbraucher weitergegeben."
+                    verdict_en = f"The spread <strong>fell</strong> by {abs(delta):.3f}/L on average after t=0 — the tax cut was passed through to consumers (and then some)."
+                    verdict_de = f"Die Spanne <strong>fiel</strong> nach t=0 im Schnitt um {abs(delta):.3f}/L — der Steuerrabatt wurde an die Verbraucher weitergegeben."
                 else:
-                    verdict_en = f"The spread was broadly **unchanged** (Δ €{delta:+.3f}/L) — mechanical pass-through only, margins held steady."
-                    verdict_de = f"Die Spanne blieb weitgehend **unverändert** (Δ €{delta:+.3f}/L) — nur mechanische Weitergabe, Margen stabil."
+                    verdict_en = f"The spread was broadly <strong>unchanged</strong> ({delta:+.3f}/L) — mechanical pass-through only, margins held steady."
+                    verdict_de = f"Die Spanne blieb weitgehend <strong>unverändert</strong> ({delta:+.3f}/L) — nur mechanische Weitergabe, Margen stabil."
             else:
                 # For a tax hike: did the spread compress before t=0 (pre-raising)?
                 last_pre_days = group[(group["Relative Day"] >= -7) & (group["Relative Day"] < 0)]["Net Product Spread"].mean()
                 if last_pre_days > 0.01:
-                    verdict_en = f"The spread **rose €{last_pre_days:.3f}/L in the 7 days before t=0** — stations pre-raised prices ahead of the restoration, making the official jump look smaller."
-                    verdict_de = f"Die Spanne **stieg in den 7 Tagen vor t=0 um €{last_pre_days:.3f}/L** — Tankstellen haben Preise vorab erhöht, damit die offizielle Erhöhung kleiner wirkt."
+                    verdict_en = f"The spread <strong>rose {last_pre_days:.3f}/L in the 7 days before t=0</strong> — stations pre-raised prices ahead of the restoration, making the official jump look smaller."
+                    verdict_de = f"Die Spanne <strong>stieg in den 7 Tagen vor t=0 um {last_pre_days:.3f}/L</strong> — Tankstellen haben Preise vorab erhöht, damit die offizielle Erhöhung kleiner wirkt."
                 else:
-                    verdict_en = f"No significant pre-raising detected. The spread {direction} by €{abs(delta):.3f}/L after the tax restoration at t=0."
-                    verdict_de = f"Keine signifikante Vorhererhöhung erkennbar. Die Spanne {direction_de} nach der Steuerwiederherstellung bei t=0 um €{abs(delta):.3f}/L."
+                    verdict_en = f"No significant pre-raising detected. The spread {direction} by {abs(delta):.3f}/L after the tax restoration at t=0."
+                    verdict_de = f"Keine signifikante Vorhererhöhung erkennbar. Die Spanne {direction_de} nach der Steuerwiederherstellung bei t=0 um {abs(delta):.3f}/L."
 
             verdict = verdict_en if lang == "en" else verdict_de
-            icon = "⬆️" if delta > 0 else "⬇️"
-
             st.markdown(
                 f"<div style='background:rgba(30,41,59,0.4);border-radius:8px;padding:12px 16px;"
                 f"border:1px solid rgba(255,255,255,0.06);margin-top:8px;font-size:0.88rem;color:#C4CAD8;'>"
-                f"{icon} <strong>{selected_event}:</strong> {verdict}</div>",
+                f"<strong>{selected_event}:</strong> {verdict}</div>",
                 unsafe_allow_html=True
             )
 
@@ -1449,15 +1476,15 @@ with tab3:
 
     if primary_stats is not None:
         min_overall, max_overall, best_h_overall, worst_h_overall = primary_stats
-        fig3.add_annotation(x=worst_h_overall, y=max_overall + 0.005, text=f"⚠️ {t('peak')} {worst_h_overall:02d}:00 (€{max_overall:.2f})", showarrow=True, arrowhead=2, arrowcolor=colors[0], font=dict(color=colors[0]))
-        fig3.add_annotation(x=best_h_overall, y=min_overall - 0.01, text=f"✅ {t('lowest')} {best_h_overall:02d}:00 (€{min_overall:.2f})", showarrow=True, arrowhead=2, arrowcolor=colors[0], font=dict(color=colors[0]))
+        fig3.add_annotation(x=worst_h_overall, y=max_overall + 0.005, text=f"{t('peak')} {worst_h_overall:02d}:00 (€{max_overall:.2f})", showarrow=True, arrowhead=2, arrowcolor=colors[0], font=dict(color=colors[0]))
+        fig3.add_annotation(x=best_h_overall, y=min_overall - 0.01, text=f"{t('lowest')} {best_h_overall:02d}:00 (€{min_overall:.2f})", showarrow=True, arrowhead=2, arrowcolor=colors[0], font=dict(color=colors[0]))
 
     fig3.update_layout(**PLOT_LAYOUT, height=400, xaxis_title=t("hour_of_day"), yaxis_title=t("avg_pump_price"))
     fig3.update_xaxes(tickmode="linear", dtick=2, gridcolor="rgba(255,255,255,0.05)")
     st.plotly_chart(fig3, use_container_width=True)
 
     if primary_stats is not None:
-        st.info(f"💡 **{t('lowest_info')}:** {best_h_overall:02d}:00 (≈€{(max_overall - min_overall):.2f}/L {t('below_peak')} {worst_h_overall:02d}:00). {t('per_tank')} ~**€{50*(max_overall-min_overall):.1f}**.")
+        st.info(f"**{t('lowest_info')}:** {best_h_overall:02d}:00 (≈€{(max_overall - min_overall):.2f}/L {t('below_peak')} {worst_h_overall:02d}:00). {t('per_tank')} ~**€{50*(max_overall-min_overall):.1f}**.")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TAB 4: Brand Comparison
@@ -1521,24 +1548,34 @@ with tab_brand:
             brand_colors = [BLUE, ACCENT, ACCENT_ALT, DANGER, "#A78BFA", "#14B8A6", "#F97316", "#E879F9"]
             if not visible_brand_df.is_empty():
                 trend_pd = visible_brand_df.sort(["comparison_group", "date"]).to_pandas()
+                # Compute daily national average across all selected groups to normalize
+                daily_national_avg = trend_pd.groupby("date")[m_col].mean().rename("national_avg")
+                trend_pd = trend_pd.merge(daily_national_avg, on="date", how="left")
+                trend_pd["margin_vs_avg"] = (trend_pd[m_col] - trend_pd["national_avg"]) * 100  # convert to euro-cents
+
                 for idx, group_name in enumerate(selected_groups):
                     group_pd = trend_pd[trend_pd["comparison_group"] == group_name]
                     if group_pd.empty:
                         continue
+                    # Apply 14-day smoothing for visual clarity
+                    smoothed = group_pd.sort_values("date")["margin_vs_avg"].rolling(14, min_periods=1).mean()
                     fig_brand.add_trace(go.Scatter(
-                        x=group_pd["date"],
-                        y=group_pd[m_col],
+                        x=group_pd.sort_values("date")["date"],
+                        y=smoothed,
                         name=group_name,
                         mode="lines",
                         line=dict(color=brand_colors[idx % len(brand_colors)], width=2.2),
                     ))
 
+            fig_brand.add_hline(y=0.0, line_dash="dot", line_color="rgba(255,255,255,0.15)", line_width=1,
+                                annotation_text="National avg" if lang == "en" else "Bundesschnitt",
+                                annotation_font_color="#8892A4")
             fig_brand = add_discount_bands(fig_brand)
             fig_brand.update_layout(
                 **PLOT_LAYOUT,
                 height=420,
                 title=t("brand_margin_trend"),
-                yaxis_title=f"{t('net_spread')} (€/L)",
+                yaxis_title="Margin vs. National Avg (ct/L)" if lang == "en" else "Spanne vs. Bundesschnitt (ct/L)",
             )
             st.plotly_chart(fig_brand, use_container_width=True)
 
@@ -1588,33 +1625,139 @@ with tab_brand:
         else:
             st.info(t("brand_groups_help"))
 
-# ──────────────────────────────────────────────────────────────────────────────
-# TAB 5: Location Premium
+# TAB 5: Regional Pricing Analysis
 # ──────────────────────────────────────────────────────────────────────────────
 with tab4:
     st.markdown(f"#### {t('location_title')}")
     st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{t('location_note')}</span>", unsafe_allow_html=True)
 
-    geo = get_geo_data().to_pandas()
-    fig4 = go.Figure(go.Bar(
-        x=geo["Location"],
-        y=geo["Avg_Price"],
-        marker_color=[DANGER, ACCENT, BLUE, ACCENT_ALT],
-        text=[f"€{p:.2f}" for p in geo["Avg_Price"]],
-        textposition="outside",
-        textfont=dict(color="#E8EAF0", size=14),
-    ))
-    cheapest = geo["Avg_Price"].min()
-    fig4.add_hline(y=cheapest, line_dash="dot", line_color=ACCENT_ALT, line_width=1,
-                   annotation_text=f" Rural baseline: €{cheapest:.2f}", annotation_font_color=ACCENT_ALT)
-    fig4.update_layout(**PLOT_LAYOUT, height=380, yaxis_title=t("avg_pump_price"), showlegend=False)
-    fig4.update_yaxes(range=[1.65, 2.25], gridcolor="rgba(255,255,255,0.05)")
-    st.plotly_chart(fig4, use_container_width=True)
+    reg_df = load_regional_daily_data(smoothing_days=smoothing_days)
+    if reg_df is not None:
+        margin_col = f"retail_margin_{fuel_key}"
+        # Fall back to total margin if retail margin not available
+        if margin_col not in reg_df.columns:
+            margin_col = f"margin_{fuel_key}"
 
-    c1, c2 = st.columns(2)
-    autobahn = geo.loc[geo["Location"] == "Autobahn", "Avg_Price"].values[0]
-    rural    = geo.loc[geo["Location"] == "Rural",    "Avg_Price"].values[0]
-    with c1:
-        st.metric(t("autobahn_premium"), f"+€{(autobahn - rural):.2f}/L", f"+{((autobahn/rural - 1)*100):.1f}%", delta_color="inverse")
-    with c2:
-        st.metric(t("tank_extra"), f"€{50*(autobahn - rural):.1f} extra", t("captive_pricing"))
+        start_dt = date_range[0]
+        end_dt = date_range[1]
+
+        # Filter to selected date range and drop the meaningless "Unknown Region" bucket (5 test stations)
+        reg_window = reg_df.filter(
+            (pl.col("date") >= start_dt)
+            & (pl.col("date") <= end_dt)
+            & (pl.col("region") != "Unknown Region")
+        )
+
+        if not reg_window.is_empty():
+            # Compute national daily average margin, then each region's deviation
+            daily_nat_avg = (
+                reg_window.group_by("date")
+                .agg(pl.col(margin_col).mean().alias("national_avg_margin"))
+            )
+            reg_enriched = reg_window.join(daily_nat_avg, on="date", how="left").with_columns(
+                ((pl.col(margin_col) - pl.col("national_avg_margin")) * 100).alias("margin_delta_ct")
+            )
+
+            # ── Bar chart: average margin deviation per region (ct/L) ──
+            bar_data = (
+                reg_enriched.group_by("region")
+                .agg([
+                    pl.col("margin_delta_ct").mean().alias("avg_delta_ct"),
+                    pl.col("station_count").max().alias("stations"),
+                ])
+                .sort("avg_delta_ct", descending=True)
+                .to_pandas()
+            )
+
+            bar_colors = [DANGER if v > 0 else ACCENT_ALT for v in bar_data["avg_delta_ct"]]
+            fig_reg_bar = go.Figure(go.Bar(
+                x=bar_data["region"],
+                y=bar_data["avg_delta_ct"],
+                marker_color=bar_colors,
+                text=[f"{v:+.2f} ct" for v in bar_data["avg_delta_ct"]],
+                textposition="outside",
+                textfont=dict(color="#E8EAF0", size=11),
+            ))
+            fig_reg_bar.add_hline(
+                y=0.0, line_dash="dot", line_color="rgba(255,255,255,0.2)", line_width=1,
+                annotation_text="National avg" if lang == "en" else "Bundesschnitt",
+                annotation_font_color="#8892A4"
+            )
+            fig_reg_bar.update_layout(
+                **PLOT_LAYOUT, height=420, showlegend=False,
+                yaxis_title="Retail Margin vs. National Avg (ct/L)" if lang == "en" else "Retailmarge vs. Bundesschnitt (ct/L)",
+            )
+            st.plotly_chart(fig_reg_bar, use_container_width=True)
+
+            # ── KPI metrics ──
+            c1, c2, c3 = st.columns(3)
+            most_exp = bar_data.iloc[0]
+            cheapest = bar_data.iloc[-1]
+            total_spread = most_exp["avg_delta_ct"] - cheapest["avg_delta_ct"]
+
+            with c1:
+                st.metric(
+                    t("most_expensive"),
+                    most_exp["region"],
+                    f"+{most_exp['avg_delta_ct']:.2f} ct/L",
+                    delta_color="inverse"
+                )
+            with c2:
+                st.metric(
+                    t("cheapest"),
+                    cheapest["region"],
+                    f"{cheapest['avg_delta_ct']:.2f} ct/L",
+                    delta_color="normal"
+                )
+            with c3:
+                st.metric(
+                    t("max_regional_premium"),
+                    f"{total_spread:.2f} ct/L",
+                    f"{50 * total_spread / 100:.2f}/Tank" if lang == "en" else f"{50 * total_spread / 100:.2f}/Tank",
+                )
+
+            # ── Time series: regional margin evolution (14-day smoothed) ──
+            st.markdown(f"#### {t('regional_spread_title')}")
+            reg_colors = [BLUE, ACCENT, ACCENT_ALT, DANGER, "#A78BFA", "#14B8A6", "#F97316", "#E879F9", "#6B7280", "#FBBF24"]
+            regions_sorted = bar_data["region"].tolist()
+
+            # Let users pick which regions to show
+            selected_regions = st.multiselect(
+                "Regions" if lang == "en" else "Regionen",
+                options=regions_sorted,
+                default=regions_sorted[:5],
+            )
+
+            if selected_regions:
+                ts_data = (
+                    reg_enriched.filter(pl.col("region").is_in(selected_regions))
+                    .sort(["region", "date"])
+                    .to_pandas()
+                )
+
+                fig_reg_ts = go.Figure()
+                for idx, region_name in enumerate(selected_regions):
+                    rg = ts_data[ts_data["region"] == region_name].sort_values("date")
+                    if rg.empty:
+                        continue
+                    smoothed = rg["margin_delta_ct"].rolling(14, min_periods=1).mean()
+                    fig_reg_ts.add_trace(go.Scatter(
+                        x=rg["date"],
+                        y=smoothed,
+                        name=region_name,
+                        mode="lines",
+                        line=dict(color=reg_colors[idx % len(reg_colors)], width=2),
+                    ))
+
+                fig_reg_ts.add_hline(y=0.0, line_dash="dot", line_color="rgba(255,255,255,0.15)", line_width=1)
+                fig_reg_ts = add_discount_bands(fig_reg_ts)
+                fig_reg_ts.update_layout(
+                    **PLOT_LAYOUT, height=400,
+                    yaxis_title="Retail Margin vs. Avg (ct/L)" if lang == "en" else "Retailmarge vs. Schnitt (ct/L)",
+                )
+                st.plotly_chart(fig_reg_ts, use_container_width=True)
+        else:
+            st.info(t("regional_data_missing"))
+    else:
+        st.info(t("regional_data_missing"))
+

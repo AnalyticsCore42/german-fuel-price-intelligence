@@ -79,9 +79,30 @@ def clean_station_data(input_path: str, output_path: str):
         pl.col("corporate_group").fill_null("Independent / Small Operator")
     )
 
+    # 3b. Add Dynamic Geographic Region mapping based on the first digit of German post_code (PLZ)
+    region_mapping = {
+        "0": "East (Saxony/Thuringia/S.Brandenburg)",
+        "1": "Northeast (Berlin/Brandenburg/Mecklenburg)",
+        "2": "North (Hamburg/Schleswig-Holstein/Bremen/N.Lower Saxony)",
+        "3": "Central (Hesse/C.Lower Saxony/W.Thuringia/E.Westphalia)",
+        "4": "West (W.Westphalia/W.Lower Saxony)",
+        "5": "West-Central (S.Westphalia/Rhineland-Palatinate/Saarland)",
+        "6": "Southwest (S.Hesse/Rhineland-Palatinate/N.Baden-Württemberg)",
+        "7": "Southwest (S.Baden-Württemberg)",
+        "8": "South (S.Bavaria/SE.Baden-Württemberg)",
+        "9": "Southeast (N.Bavaria/S.Thuringia)"
+    }
+    
+    df_cleaned = df_cleaned.with_columns(
+        pl.col("post_code")
+        .str.slice(0, 1)
+        .replace_strict(region_mapping, default="Unknown Region")
+        .alias("region")
+    )
+
     # 4. Save the "Gold" dataset
     df_cleaned.write_parquet(output_path)
-    print(f"✅ Cleaned dataset saved to {output_path}!")
+    print(f"Cleaned dataset saved to {output_path}!")
     
     # 5. Print the new distribution to verify the fix!
     print("\nCorporate Group Distribution:")

@@ -46,3 +46,9 @@ data/tankerkoenig-repo/
 data/**/._*
 **/._*
 
+# Test-related files
+.coverage
+.pytest_cache/
+htmlcov/
+
+

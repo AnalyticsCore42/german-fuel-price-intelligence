@@ -1,0 +1,25 @@
+# Exclude virtual environments
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+
+# Exclude massive raw price database folders
+data/tankerkoenig/
+data/tankerkoenig-repo/
+
+# Exclude git and IDE configs
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+
+# Exclude test frameworks and reports
+.pytest_cache/
+.coverage
+tests/
+walkthrough.md
+project_plan.md
+task.md

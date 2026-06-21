@@ -32,6 +32,7 @@ STATIONS_FILE = DATA_DIR / "tankerkoenig" / "stations" / "cleaned-stations.parqu
 DAILY_OUTPUT_FILE = DATA_DIR / "processed_daily_margins.parquet"
 INTRADAY_OUTPUT_FILE = DATA_DIR / "processed_intraday.parquet"
 BRAND_DAILY_OUTPUT_FILE = DATA_DIR / "processed_brand_daily_margins.parquet"
+REGIONAL_DAILY_OUTPUT_FILE = DATA_DIR / "processed_regional_daily_margins.parquet"
 
 MIN_PRICE_VALID = 0.80
 MAX_PRICE_VALID = 3.00
@@ -71,6 +72,7 @@ def empty_station_metadata() -> pl.DataFrame:
             "brand": pl.String,
             "brand_group": pl.String,
             "corporate_group": pl.String,
+            "region": pl.String,
             "brand_station_count": pl.UInt32,
         }
     )
@@ -96,6 +98,9 @@ def load_station_metadata() -> pl.DataFrame:
         pl.col("corporate_group")
         .fill_null("Independent / Small Operator")
         .alias("corporate_group"),
+        pl.col("region")
+        .fill_null("Unknown Region")
+        .alias("region"),
     ])
     brand_counts = metadata.group_by("brand").agg(pl.len().alias("brand_station_count"))
 
@@ -107,7 +112,7 @@ def load_station_metadata() -> pl.DataFrame:
             .otherwise(pl.lit(OTHER_BRAND_BUCKET))
             .alias("brand_group")
         )
-        .select(["station_uuid", "brand", "brand_group", "corporate_group", "brand_station_count"])
+        .select(["station_uuid", "brand", "brand_group", "corporate_group", "region", "brand_station_count"])
     )
 
 
@@ -252,6 +257,40 @@ def summarize_brand_daily(snapshot: pl.DataFrame, station_metadata: pl.DataFrame
     ], how="vertical")
 
 
+def summarize_regional_daily(snapshot: pl.DataFrame, station_metadata: pl.DataFrame) -> pl.DataFrame:
+    if station_metadata.is_empty():
+        return pl.DataFrame(
+            schema={
+                "date": pl.Date,
+                "region": pl.String,
+                "price_diesel": pl.Float64,
+                "price_e5": pl.Float64,
+                "price_e10": pl.Float64,
+                "stations_reporting": pl.UInt32,
+                "station_count": pl.UInt32,
+            }
+        )
+
+    enriched = (
+        snapshot.join(station_metadata, on="station_uuid", how="left")
+        .with_columns([
+            pl.col("region").fill_null("Unknown Region"),
+        ])
+    )
+
+    return (
+        enriched.group_by(["date", "region"])
+        .agg([
+            pl.col("price_diesel").mean().alias("price_diesel"),
+            pl.col("price_e5").mean().alias("price_e5"),
+            pl.col("price_e10").mean().alias("price_e10"),
+            pl.col("station_uuid").filter(pl.col("price_e5").is_not_null()).n_unique().alias("stations_reporting"),
+            pl.col("station_uuid").n_unique().alias("station_count"),
+        ])
+        .sort(["date", "region"])
+    )
+
+
 def end_of_day_state(snapshot: pl.DataFrame) -> pl.DataFrame:
     return (
         snapshot.filter(pl.col("hour") == 23)
@@ -344,6 +383,7 @@ def run_pipeline() -> None:
     hourly_parts = []
     daily_parts = []
     brand_daily_parts = []
+    regional_daily_parts = []
 
     for idx, path in enumerate(price_files, start=1):
         hourly_changes = read_hourly_changes(path)
@@ -355,6 +395,11 @@ def run_pipeline() -> None:
         brand_daily = summarize_brand_daily(snapshot, station_metadata)
         if not brand_daily.is_empty():
             brand_daily_parts.append(brand_daily)
+        
+        regional_daily = summarize_regional_daily(snapshot, station_metadata)
+        if not regional_daily.is_empty():
+            regional_daily_parts.append(regional_daily)
+
         state = end_of_day_state(snapshot)
 
         if idx % 100 == 0 or idx == len(price_files):
@@ -368,6 +413,7 @@ def run_pipeline() -> None:
 
     intraday_df.write_parquet(INTRADAY_OUTPUT_FILE, compression="zstd")
     daily_df.write_parquet(DAILY_OUTPUT_FILE, compression="zstd")
+    
     brand_daily_df = None
     if brand_daily_parts:
         brand_daily_base_df = pl.concat(brand_daily_parts, how="vertical").sort([
@@ -376,6 +422,14 @@ def run_pipeline() -> None:
         brand_daily_df = add_tax_and_spread_columns(brand_daily_base_df)
         brand_daily_df.write_parquet(BRAND_DAILY_OUTPUT_FILE, compression="zstd")
 
+    regional_daily_df = None
+    if regional_daily_parts:
+        regional_daily_base_df = pl.concat(regional_daily_parts, how="vertical").sort([
+            "region", "date"
+        ])
+        regional_daily_df = add_tax_and_spread_columns(regional_daily_base_df)
+        regional_daily_df.write_parquet(REGIONAL_DAILY_OUTPUT_FILE, compression="zstd")
+
     print("\n==========================================")
     print("OUTPUT")
     print("==========================================")
@@ -383,6 +437,8 @@ def run_pipeline() -> None:
     print(f"Daily:    {DAILY_OUTPUT_FILE} ({daily_df.height:,} rows, {DAILY_OUTPUT_FILE.stat().st_size / 1024:.0f} KB)")
     if brand_daily_df is not None:
         print(f"Brand:    {BRAND_DAILY_OUTPUT_FILE} ({brand_daily_df.height:,} rows, {BRAND_DAILY_OUTPUT_FILE.stat().st_size / 1024 / 1024:.2f} MB)")
+    if regional_daily_df is not None:
+        print(f"Regional: {REGIONAL_DAILY_OUTPUT_FILE} ({regional_daily_df.height:,} rows, {REGIONAL_DAILY_OUTPUT_FILE.stat().st_size / 1024 / 1024:.2f} MB)")
     print(f"Date range: {daily_df['date'].min()} to {daily_df['date'].max()}")
 
 

@@ -46,9 +46,10 @@ Last updated: 2026-05-21
 
 1. ~~pytest suite for `scripts/02_tax_engine.py`~~ ✅ Done — 56 tests, run with `pytest tests/ -v`
 2. ~~Brand comparison — compare margins and pricing behavior across gas station brands (Shell, Aral, Jet, etc.) in general and specifically during the Tankrabatt periods~~ ✅ Done — `data/processed_brand_daily_margins.parquet` + dashboard tab
-3. RAG pipeline evaluation — text-to-SQL over the parquet files via DuckDB + LLM tool-calling, to enable natural language queries on price/margin data
-4. Deploy to Streamlit Cloud or self-hosted server
-5. Write the rest of the tests (Low Priority)
+3. **Spatial Brand Analysis** — Compute local pricing premiums by comparing each station's price relative to its 10–30 geographically closest neighbors (using BallTree/Haversine distance on coordinates) to eliminate Autobahn vs. countryside captive-pricing skew.
+4. RAG pipeline evaluation — text-to-SQL over the parquet files via DuckDB + LLM tool-calling, to enable natural language queries on price/margin data
+5. Deploy to Streamlit Cloud or self-hosted server
+6. Write the rest of the tests (Low Priority)
 
 ## Test Coverage
 
