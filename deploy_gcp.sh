@@ -2,7 +2,7 @@
 # Stop execution on any error
 set -e
 
-echo "🚀 Starting deployment to Google Cloud Run..."
+echo "Starting deployment to Google Cloud Run..."
 echo "Project: project-75366ce0-f637-4d56-bcb"
 echo "Service: gasoline-dashboard"
 echo "Region:  europe-west3"
