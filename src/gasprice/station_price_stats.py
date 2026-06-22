@@ -137,6 +137,9 @@ def build_station_stats() -> None:
     # Drop stations with no price data at all
     result = result.filter(pl.col("avg_price_e5").is_not_null())
 
+    # Defensive duplicate guard: one row per station in the output
+    result = result.unique(subset=["station_uuid"], keep="last")
+
     result.write_parquet(OUTPUT_FILE, compression="zstd")
 
     print(f"\n==========================================")

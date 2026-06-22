@@ -106,7 +106,9 @@ def clean_station_data(input_path: str, output_path: str):
         .alias("region")
     )
 
-    # 4. Save the "Gold" dataset
+    # 4. Deduplicate by station UUID, keeping the last occurrence, then save the "Gold" dataset
+    uuid_col = "uuid" if "uuid" in df_cleaned.columns else "station_uuid"
+    df_cleaned = df_cleaned.unique(subset=[uuid_col], keep="last")
     df_cleaned.write_parquet(output_path)
     print(f"Cleaned dataset saved to {output_path}!")
     

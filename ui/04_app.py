@@ -29,11 +29,11 @@ REGIONAL_DAILY_FILE = DATA_DIR / "processed_regional_daily_margins.parquet"
 # ==========================================
 
 st.set_page_config(
-    page_title="Tankpreise Analyse — Germany",
+    page_title="Tankpreise — Fuel Price Analysis / Deutsche Kraftstoffpreise",
     page_icon=None,
     layout="wide",
     initial_sidebar_state="expanded",
-    menu_items={"About": "German Fuel Price Spread Analysis — Phase 4 Dashboard"}
+    menu_items={"About": "German Fuel Price Spread Analysis — Phase 4 Dashboard / Deutsche Kraftstoffpreis-Spannenanalyse"}
 )
 
 # ---- CSS: Modern dark dashboard with glassmorphism metric cards ----
@@ -84,13 +84,14 @@ st.markdown("""
         transition: border-color 0.2s;
     }
     .kpi-card:hover { border-color: rgba(245,166,35,0.3); }
+    .kpi-card.insight { border-left: 3px solid #F6AD55; background: rgba(245,166,35,0.06); }
     .kpi-label  { font-size: 0.78rem; color: #8892A4; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px; }
     .kpi-value  { font-size: 1.9rem; font-weight: 700; color: #E8EAF0; line-height: 1; }
     .kpi-delta  { font-size: 0.8rem; margin-top: 6px; }
     .kpi-delta.up   { color: #F5A623; }
     .kpi-delta.down { color: #22C55E; }
     .kpi-delta.bad  { color: #EF4444; }
-    .kpi-subtitle   { font-size: 0.75rem; color: #6b7280; margin-top: 6px; }
+    .kpi-subtitle   { font-size: 0.75rem; color: #A0AEC0; margin-top: 6px; }
 
     /* ── Styled Selectboxes / Dropdowns ── */
     select {
@@ -127,6 +128,20 @@ st.markdown("""
     li[role="option"]:hover, li[role="option"][aria-selected="true"] {
         background-color: rgba(245, 166, 35, 0.15) !important;
         color: #F5A623 !important;
+    }
+
+    /* ── Slider thumb affordance ── */
+    div[data-testid="stSlider"] [role="slider"] {
+        cursor: grab !important;
+        border: 2px solid #F5A623 !important;
+        background: #0A0F1E !important;
+    }
+    div[data-testid="stSlider"] [role="slider"]:active {
+        cursor: grabbing !important;
+    }
+    div[data-testid="stSlider"] [data-testid="stTickBarMin"],
+    div[data-testid="stSlider"] [data-testid="stTickBarMax"] {
+        color: #A0AEC0 !important;
     }
 
     /* ── Alert banner ── */
@@ -182,33 +197,41 @@ ACCENT      = "#F5A623"   # amber / energy
 ACCENT_ALT  = "#22C55E"   # green / reference
 DANGER      = "#EF4444"   # red / warning
 BLUE        = "#3B82F6"   # blue / reference
+SPREAD      = "#A855F7"   # violet / net product spread (distinct from amber pump price)
 
 # Fuel Discount periods
 DISCOUNT_PERIODS = [
-    ("2022-06-01", "2022-08-31", "1st Fuel Discount (Tankrabatt 1)"),
-    ("2026-05-01", "2026-06-30", "2nd Fuel Discount (Tankrabatt 2)"),
+    ("2022-06-01", "2022-08-31", "1st Fuel Discount (Tankrabatt 1) / 1. Tankrabatt"),
+    ("2026-05-01", "2026-06-30", "2nd Fuel Discount (Tankrabatt 2) / 2. Tankrabatt"),
 ]
 STABLE_MARGIN_BASELINE_DAYS = 365
 
+# Canonical English event keys used internally (filtering, data columns).
+EVENT_NAME_KEYS = {
+    "Tankrabatt 1 Start (Jun 2022)": "policy_event_1_start",
+    "Tankrabatt 1 End (Sep 2022)":   "policy_event_1_end",
+    "Tankrabatt 2 Start (May 2026)": "policy_event_2_start",
+}
+
 # Official legislative milestones per event, sourced from docs/policy_timeline_tankrabatt.md
-# Each tuple: (phase_label, relative_day_from_effective, color)
+# Each tuple: (phase_label_translation_key, date, color)
 # Relative day = calendar_date - effective_date, always negative (pre-event)
 POLICY_MILESTONES = {
     "Tankrabatt 1 Start (Jun 2022)": [
-        # (phase_label, date, hex_color)
-        ("Public Rumour (Lindner)",   date(2022, 3, 14), "#6B7280"),   # Day −79 — grey
-        ("Official Announcement",    date(2022, 3, 24), "#F5A623"),   # Day −69 — amber
-        ("Draft Law (Bundestag)",    date(2022, 5, 10), "#60A5FA"),   # Day −22 — light blue
-        ("Parliamentary Vote ✓",     date(2022, 5, 19), "#3B82F6"),   # Day −13 — blue / legal certainty
+        # (phase_label_key, date, hex_color)
+        ("phase_public_rumour",      date(2022, 3, 14), "#6B7280"),   # Day −79 — grey
+        ("phase_official_announcement", date(2022, 3, 24), "#F5A623"),   # Day −69 — amber
+        ("phase_draft_law",          date(2022, 5, 10), "#60A5FA"),   # Day −22 — light blue
+        ("phase_parliamentary_vote", date(2022, 5, 19), "#3B82F6"),   # Day −13 — blue / legal certainty
     ],
     "Tankrabatt 1 End (Sep 2022)": [
         # End was legally certain from Day 1 of the discount (fixed 3-month term in the law)
         # The only "anticipation" milestone is the start of the discount itself (Day −92)
-        ("Expiry Legally Fixed",     date(2022, 6, 1),  "#F5A623"),   # Day −92 — amber / known from start
+        ("phase_expiry_fixed",       date(2022, 6, 1),  "#F5A623"),   # Day −92 — amber / known from start
     ],
     "Tankrabatt 2 Start (May 2026)": [
-        ("Announcement + Draft Law", date(2026, 4, 15), "#F5A623"),   # Day −16 — amber
-        ("Parliamentary Vote ✓",     date(2026, 4, 24), "#10B981"),   # Day −7  — green / legal certainty
+        ("phase_announcement_draft", date(2026, 4, 15), "#F5A623"),   # Day −16 — amber
+        ("phase_parliamentary_vote", date(2026, 4, 24), "#10B981"),   # Day −7  — green / legal certainty
     ],
 }
 
@@ -226,6 +249,10 @@ def load_translations():
     return translations
 
 TRANSLATIONS = load_translations()
+
+# Default translate helper used before the sidebar re-binds it to the selected language.
+def translate(key: str) -> str:
+    return TRANSLATIONS.get("en", {}).get(key, key)
 
 def detect_default_language() -> str:
     candidates = []
@@ -280,7 +307,7 @@ def _compute_smoothing(df: pl.DataFrame, smoothing_days: int, partition_cols: li
     ])
     return df
 
-@st.cache_data(show_spinner="Loading aggregated spreads + taxes…")
+@st.cache_data(show_spinner="Loading aggregated spreads + taxes… / Lade aggregierte Spannen + Steuern…")
 def load_data(start_date: date = date(2021, 1, 1), smoothing_days: int = 1):
     """
     Loads the real aggregated daily spreads (Tankerkönig + Macro).
@@ -290,13 +317,13 @@ def load_data(start_date: date = date(2021, 1, 1), smoothing_days: int = 1):
     df = _compute_smoothing(df, smoothing_days)
     return df
 
-@st.cache_data(show_spinner="Loading intraday rhythm…")
+@st.cache_data(show_spinner="Loading intraday rhythm… / Lade Tagesrhythmus…")
 def load_intraday_data():
     if not INTRADAY_FILE.exists():
         return None
     return pl.read_parquet(INTRADAY_FILE)
 
-@st.cache_data(show_spinner="Loading brand comparison data…")
+@st.cache_data(show_spinner="Loading brand comparison data… / Lade Markenvergleichsdaten…")
 def load_brand_daily_data(smoothing_days: int = 1):
     if not BRAND_DAILY_FILE.exists():
         return None
@@ -304,7 +331,7 @@ def load_brand_daily_data(smoothing_days: int = 1):
     df = _compute_smoothing(df, smoothing_days, partition_cols=["analysis_level", "comparison_group"])
     return df
 
-@st.cache_data(show_spinner="Loading regional pricing data…")
+@st.cache_data(show_spinner="Loading regional pricing data… / Lade regionale Preisdaten…")
 def load_regional_daily_data(smoothing_days: int = 1):
     if not REGIONAL_DAILY_FILE.exists():
         return None
@@ -322,7 +349,7 @@ language_index = list(language_labels).index(default_language)
 
 with st.sidebar:
     selected_language = st.selectbox(
-        "Language / Sprache",
+        translate("language"),
         options=list(language_labels),
         index=language_index,
         format_func=lambda key: language_labels[key],
@@ -345,8 +372,8 @@ with st.sidebar:
 
     st.markdown(
         f"<div style='background-color:#121929; border: 1px solid #1E293B; border-radius: 4px; padding: 10px; margin-bottom:15px; font-size:0.8rem; color:#E8EAF0;'>"
-        f"<strong>App Version:</strong> v1.1.0<br>"
-        f"<strong>Data Through:</strong> {max_d.strftime('%Y-%m-%d')}"
+        f"<strong>{translate("app_version_label")}</strong> v1.1.0<br>"
+        f"<strong>{translate("data_through_label")}</strong> {max_d.strftime('%Y-%m-%d')}"
         f"</div>",
         unsafe_allow_html=True
     )
@@ -372,10 +399,10 @@ with st.sidebar:
         translate("date_range"),
         min_value=min_d, max_value=max_d,
         value=(date(2022, 1, 1), max_d),
-        help=translate("date_range_help")
+        help=translate("date_range_help") + " " + translate("date_range_drag_help")
     )
 
-    fuel_options = {"e5": "Super E5", "e10": "Super E10", "diesel": "Diesel"}
+    fuel_options = {"e5": translate("fuel_e5"), "e10": translate("fuel_e10"), "diesel": translate("fuel_diesel")}
     fuel_key = st.selectbox(
         translate("fuel_type"),
         list(fuel_options),
@@ -477,7 +504,7 @@ df["total_tax"] = df[vat_col] + df[ebv_col] + df[co2_col] + df[energy_col]
 
 # Calculate correlation (lagged by 2 days)
 if len(df) > 10:
-    corr_df = df_full.select(["Raw_Material_EUR_per_Liter", pump_price_col]).drop_nulls().to_pandas()
+    corr_df = df_full.select(["date", "Raw_Material_EUR_per_Liter", pump_price_col]).drop_nulls().to_pandas()
     # Shift Brent by 2 days forward to align past Brent with today's Pump
     corr_val = corr_df["Raw_Material_EUR_per_Liter"].shift(2).corr(corr_df[pump_price_col])
 else:
@@ -519,21 +546,50 @@ with kpi3:
 
 with kpi4:
     sign = "+" if delta_marg > 0 else ""
-    st.markdown(f"""<div class='kpi-card'>
+    st.markdown(f"""<div class='kpi-card insight'>
         <div class='kpi-label'>{translate('spread_delta_discount_1')}</div>
         <div class='kpi-value'>{sign}€{delta_marg:.3f}</div>
         <div class='kpi-subtitle'>{translate('pre_discount_compared')}</div>
     </div>""", unsafe_allow_html=True)
 
 with kpi5:
-    corr_label = "Brent Correlation" if lang == "en" else "Brent-Korrelation"
-    corr_sub = "2-day lag, full period" if lang == "en" else "2 Tage Lag, gesamter Zeitraum"
-    corr_str = f"{corr_val*100:.1f}%" if corr_val != 0.0 else "N/A"
+    corr_label = translate("kpi_brent_correlation")
+    corr_sub = translate("kpi_brent_correlation_subtitle")
+    corr_str = f"{corr_val*100:.1f}%" if corr_val != 0.0 else translate("not_available")
     st.markdown(f"""<div class='kpi-card'>
         <div class='kpi-label'>{corr_label}</div>
         <div class='kpi-value'>{corr_str}</div>
         <div class='kpi-subtitle'>{corr_sub}</div>
     </div>""", unsafe_allow_html=True)
+
+    # Tiny sparkline: rolling 30-day Brent-pump correlation
+    if corr_val != 0.0 and len(corr_df) > 30:
+        rolling_corr = (
+            corr_df["Raw_Material_EUR_per_Liter"]
+            .shift(2)
+            .rolling(window=30, min_periods=5)
+            .corr(corr_df[pump_price_col])
+        )
+        fig_spark = go.Figure(go.Scatter(
+            x=corr_df["date"],
+            y=rolling_corr,
+            mode="lines",
+            line=dict(color=ACCENT, width=1.5),
+            fill="tozeroy",
+            fillcolor="rgba(245,166,35,0.08)",
+            hovertemplate="30d correlation: %{y:.2f}<extra></extra>",
+        ))
+        fig_spark.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(l=0, r=0, t=0, b=0),
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False, range=[0, 1]),
+            height=55,
+            showlegend=False,
+        )
+        st.plotly_chart(fig_spark, use_container_width=True, config=PLOT_CONFIG)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -582,6 +638,11 @@ def add_discount_bands(fig):
                 xanchor=anchor,
                 yanchor="top",
                 font=dict(color="#F5A623", size=11),
+                bgcolor="rgba(10,15,30,0.85)",
+                bordercolor="rgba(245,166,35,0.45)",
+                borderwidth=1,
+                borderpad=4,
+                opacity=0.95,
             )
     return fig
 
@@ -590,8 +651,8 @@ def calculate_tax_break_pass_through(source_df: pl.DataFrame) -> list[dict[str, 
     """Compare pump-price drops with tax-burden drops for each tax-break window."""
     max_date = source_df["date"].max()
     periods = [
-        ("Tankrabatt 1 / 2022", date(2022, 6, 1), date(2022, 8, 31)),
-        ("Tankrabatt 2 / 2026", date(2026, 5, 1), date(2026, 6, 30)),
+        (translate("tankrabatt_1"), date(2022, 6, 1), date(2022, 8, 31)),
+        (translate("tankrabatt_2"), date(2026, 5, 1), date(2026, 6, 30)),
     ]
     analysis_df = source_df.with_columns(
         (pl.col(vat_col) + pl.col(ebv_col) + pl.col(co2_col) + pl.col(energy_col)).alias("selected_total_tax")
@@ -703,7 +764,7 @@ def welch_normal_p_value(before: list[float], after: list[float]) -> tuple[float
 
 def evidence_label(p_value: float) -> str:
     if p_value != p_value:
-        return "n/a"
+        return translate("not_available")
     if p_value < 0.01:
         return translate("strong")
     if p_value < 0.05:
@@ -888,7 +949,7 @@ with tab1:
                     name=translate("retail_trace"),
                     mode="lines",
                     line=dict(width=0),
-                    fillcolor="rgba(245, 166, 35, 0.6)", # Amber
+                    fillcolor="rgba(168, 85, 247, 0.45)", # Violet / Net Spread
                     stackgroup="one",
                     hovertemplate=translate("retail_trace") + ": €%{y:.3f} (%{customdata:.1f}%)<extra></extra>",
                     customdata=retail_pct
@@ -901,7 +962,7 @@ with tab1:
                     name=translate("spread_trace"),
                     mode="lines",
                     line=dict(width=0),
-                    fillcolor="rgba(245, 166, 35, 0.6)", # Amber
+                    fillcolor="rgba(168, 85, 247, 0.45)", # Violet / Net Spread
                     stackgroup="one",
                     hovertemplate=translate("spread_hover") + ": €%{y:.3f} (%{customdata:.1f}%)<extra></extra>",
                     customdata=margin_pct
@@ -955,7 +1016,7 @@ with tab1:
         
         # Determine max Y axis to keep charts stable
         max_y = df[pump_price_col].max() * 1.1
-        fig.update_layout(**PLOT_LAYOUT, height=480, yaxis_title="€ / Liter", yaxis_range=[0, max_y])
+        fig.update_layout(**PLOT_LAYOUT, height=480, yaxis_title=translate("axis_euro_per_liter"), yaxis_range=[0, max_y])
         st.plotly_chart(fig, use_container_width=True, config=PLOT_CONFIG)
 
 
@@ -970,19 +1031,19 @@ with tab1:
             fig_trend = go.Figure()
             fig_trend.add_trace(go.Scatter(
                 x=df["date"], y=tax_pct_series,
-                name="Daily Tax %" if lang == "en" else "Täglicher Steueranteil %",
+                name=translate("tax_trace_daily"),
                 mode="lines",
                 line=dict(color="rgba(148, 163, 184, 0.3)", width=1),
             ))
             fig_trend.add_trace(go.Scatter(
                 x=df["date"], y=rolling_avg,
-                name="90-Day Trend" if lang == "en" else "90-Tage-Trend",
+                name=translate("tax_trace_90d"),
                 mode="lines",
                 line=dict(color="#3B82F6", width=3), # Blue
             ))
             fig_trend = add_discount_bands(fig_trend)
             # Add horizontal line for 50%
-            threshold_label = " 50% Threshold" if lang == "en" else " 50% Grenze"
+            threshold_label = translate("tax_threshold_50")
             fig_trend.add_hline(y=50, line_dash="dot", line_color=BLUE, line_width=1,
                    annotation_text=threshold_label, annotation_font_color=BLUE)
             fig_trend.update_layout(**PLOT_LAYOUT, height=350, yaxis_title=translate("tax_percent"), yaxis_ticksuffix="%")
@@ -1011,19 +1072,25 @@ with tab2:
     fig2.add_hline(y=baseline, line_dash="dot", line_color=BLUE, line_width=1,
                    annotation_text=f" {translate('historical_avg')}: €{baseline:.3f}", annotation_font_color=BLUE)
     fig2 = add_discount_bands(fig2)
-    fig2.update_layout(**PLOT_LAYOUT, height=400, yaxis_title=f"{translate('net_spread')} (€/L)")
+    fig2.update_layout(
+        **{**PLOT_LAYOUT, "margin": dict(l=70, r=10, t=40, b=90)},
+        height=400,
+        yaxis_title=f"{translate('net_spread')} (€/L)",
+    )
     st.plotly_chart(fig2, use_container_width=True, config=PLOT_CONFIG)
 
     # Sub-metrics below chart
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.metric(translate("pre_discount_avg"), f"€{pre_disc:.4f}")
-        st.caption(f"{pre_disc_start:%Y-%m-%d} – {pre_disc_end:%Y-%m-%d}")
-    with c2:
-        sign = "+" if delta_marg > 0 else ""
-        st.metric(translate("during_discount_1"), f"€{disc_marg:.4f}", f"{sign}€{delta_marg:.4f}", delta_color="inverse")
-    with c3:
-        st.metric(translate("historical_range"), f"€{df[margin_col].min():.3f} – €{df[margin_col].max():.3f}")
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.container(border=True):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric(translate("pre_discount_avg"), f"€{pre_disc:.4f}")
+            st.caption(f"{pre_disc_start:%Y-%m-%d} – {pre_disc_end:%Y-%m-%d}")
+        with c2:
+            sign = "+" if delta_marg > 0 else ""
+            st.metric(translate("during_discount_1"), f"€{disc_marg:.4f}", f"{sign}€{delta_marg:.4f}", delta_color="inverse")
+        with c3:
+            st.metric(translate("historical_range"), f"€{df[margin_col].min():.3f} – €{df[margin_col].max():.3f}")
 
     st.markdown(f"#### {translate('pass_title')}")
     st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{translate('pass_note')}</span>", unsafe_allow_html=True)
@@ -1051,7 +1118,7 @@ with tab2:
             **PLOT_LAYOUT,
             height=360,
             barmode="group",
-            yaxis_title="€ / Liter",
+            yaxis_title=translate("axis_euro_per_liter"),
         )
         st.plotly_chart(fig_pass, use_container_width=True, config=PLOT_CONFIG)
 
@@ -1064,7 +1131,7 @@ with tab2:
                 translate("spread_baseline"): row["spread_baseline"],
                 translate("pump_drop"): f"€{row['pump_drop']:.3f}/L",
                 translate("tax_drop"): f"€{row['tax_drop']:.3f}/L",
-                translate("pass_through"): f"{pass_pct:.1f}%" if pass_pct is not None else "n/a",
+                translate("pass_through"): f"{pass_pct:.1f}%" if pass_pct is not None else translate("not_available"),
                 translate("spread_change"): f"{row['spread_change']:+.3f}/L",
                 translate("raw_change"): f"{row['raw_change']:+.3f}/L",
             })
@@ -1079,9 +1146,10 @@ with tab2:
     all_event_labels = list(POLICY_MILESTONES.keys())
     with c_evt:
         selected_event = st.selectbox(
-            "Select event" if lang == "en" else "Ereignis wählen",
+            translate("select_event_label"),
             options=all_event_labels,
             index=0,
+            format_func=lambda key: translate(EVENT_NAME_KEYS.get(key, key)),
         )
     with c_win:
         event_window_days = st.slider(
@@ -1090,10 +1158,10 @@ with tab2:
             help=translate("event_window_help"),
         )
     with c_opts:
-        normalize_opt   = st.checkbox("Normalized" if lang == "en" else "Normalisiert", value=True,
-                                       help="Subtract pre-event mean so all events start at 0." if lang == "en" else "Mittelwert vor dem Ereignis abziehen, so dass alle Kurven bei 0 starten.")
-        show_milestones = st.checkbox("Milestones" if lang == "en" else "Meilensteine", value=True,
-                                       help="Show official legislative dates as vertical markers." if lang == "en" else "Offizielle Gesetzgebungsdaten als Markierungen anzeigen.")
+        normalize_opt   = st.checkbox(translate("checkbox_normalized"), value=True,
+                                       help=translate("help_normalized"))
+        show_milestones = st.checkbox(translate("checkbox_milestones"), value=True,
+                                       help=translate("help_milestones"))
 
     timeline_data = get_event_study_timeline(
         df_full, pump_price_col, margin_col, window_days=event_window_days, normalize=normalize_opt
@@ -1123,7 +1191,7 @@ with tab2:
 
         # Main trajectory line
         if not group.empty:
-            hover_fmt = "Day %{x}: €%{y:+.3f}/L<extra></extra>" if normalize_opt else "Day %{x}: €%{y:.3f}/L<extra></extra>"
+            hover_fmt = translate("event_hover_normalized" if normalize_opt else "event_hover_absolute")
             fig_event.add_trace(go.Scatter(
                 x=group["Relative Day"], y=group["Net Product Spread"],
                 name=selected_event, mode="lines",
@@ -1134,7 +1202,7 @@ with tab2:
         # t=0 line
         fig_event.add_vline(
             x=0, line_dash="dash", line_color="rgba(136,146,164,0.75)", line_width=2,
-            annotation_text="Tax change effective →" if lang == "en" else "Steueränderung wirksam →",
+            annotation_text=translate("tax_change_effective_arrow"),
             annotation_position="top right",
             annotation_font=dict(color="#8892A4", size=10)
         )
@@ -1153,7 +1221,7 @@ with tab2:
                     continue
                 fig_event.add_vline(
                     x=rel_day, line_dash="dot", line_color=phase_color, line_width=1.5,
-                    annotation_text=phase_label,
+                    annotation_text=translate(phase_label),
                     annotation_position="top left",
                     annotation_font=dict(color=phase_color, size=9),
                 )
@@ -1161,13 +1229,13 @@ with tab2:
         # Baseline reference
         if normalize_opt:
             fig_event.add_hline(y=0.0, line_dash="dot", line_color="rgba(255,255,255,0.1)", line_width=1)
-            yaxis_title = "Spread Δ vs. baseline (€/L)" if lang == "en" else "Spannen-Δ vs. Basislinie (€/L)"
+            yaxis_title = translate("yaxis_spread_delta")
         else:
-            yaxis_title = "Net Product Spread (€/L)" if lang == "en" else "Netto-Produktspanne (€/L)"
+            yaxis_title = translate("yaxis_net_spread")
 
         event_layout = PLOT_LAYOUT | {
             "height": 400,
-            "xaxis_title": "Days relative to effective date (t=0)" if lang == "en" else "Tage relativ zum Inkrafttreten (t=0)",
+            "xaxis_title": translate("xaxis_days_relative"),
             "yaxis_title": yaxis_title,
             "showlegend": False,
         }
@@ -1179,35 +1247,29 @@ with tab2:
             pre_spread  = group[group["Relative Day"] < 0]["Net Product Spread"].mean()
             post_spread = group[group["Relative Day"] >= 0]["Net Product Spread"].mean()
             delta       = post_spread - pre_spread
-            direction   = "fell" if delta < 0 else "rose"
-            direction_de = "fiel" if delta < 0 else "stieg"
 
             if event_type == "tax_cut":
                 # For a discount: did spread rise (retailers kept it) or stay flat/fall (passed through)?
                 if delta > 0.01:
-                    verdict_en = f"The spread <strong>rose</strong> by {abs(delta):.3f}/L on average after t=0 — retailers widened their margin during the discount, absorbing part of the tax cut."
-                    verdict_de = f"Die Spanne <strong>stieg</strong> nach t=0 im Schnitt um {abs(delta):.3f}/L — Tankstellen haben einen Teil des Steuerrabatts einbehalten."
+                    verdict = translate("verdict_discount_rose").format(delta=abs(delta))
                 elif delta < -0.005:
-                    verdict_en = f"The spread <strong>fell</strong> by {abs(delta):.3f}/L on average after t=0 — the tax cut was passed through to consumers (and then some)."
-                    verdict_de = f"Die Spanne <strong>fiel</strong> nach t=0 im Schnitt um {abs(delta):.3f}/L — der Steuerrabatt wurde an die Verbraucher weitergegeben."
+                    verdict = translate("verdict_discount_fell").format(delta=abs(delta))
                 else:
-                    verdict_en = f"The spread was broadly <strong>unchanged</strong> ({delta:+.3f}/L) — mechanical pass-through only, margins held steady."
-                    verdict_de = f"Die Spanne blieb weitgehend <strong>unverändert</strong> ({delta:+.3f}/L) — nur mechanische Weitergabe, Margen stabil."
+                    verdict = translate("verdict_discount_unchanged").format(delta=delta)
             else:
                 # For a tax hike: did the spread compress before t=0 (pre-raising)?
                 last_pre_days = group[(group["Relative Day"] >= -7) & (group["Relative Day"] < 0)]["Net Product Spread"].mean()
                 if last_pre_days > 0.01:
-                    verdict_en = f"The spread <strong>rose {last_pre_days:.3f}/L in the 7 days before t=0</strong> — stations pre-raised prices ahead of the restoration, making the official jump look smaller."
-                    verdict_de = f"Die Spanne <strong>stieg in den 7 Tagen vor t=0 um {last_pre_days:.3f}/L</strong> — Tankstellen haben Preise vorab erhöht, damit die offizielle Erhöhung kleiner wirkt."
+                    verdict = translate("verdict_hike_pre_raised").format(last_pre_days=last_pre_days)
                 else:
-                    verdict_en = f"No significant pre-raising detected. The spread {direction} by {abs(delta):.3f}/L after the tax restoration at t=0."
-                    verdict_de = f"Keine signifikante Vorhererhöhung erkennbar. Die Spanne {direction_de} nach der Steuerwiederherstellung bei t=0 um {abs(delta):.3f}/L."
+                    direction = translate("verdict_direction_fell" if delta < 0 else "verdict_direction_rose")
+                    verdict = translate("verdict_hike_no_pre_raise").format(direction=direction, delta=abs(delta))
 
-            verdict = verdict_en if lang == "en" else verdict_de
+            event_display = translate(EVENT_NAME_KEYS.get(selected_event, selected_event))
             st.markdown(
                 f"<div style='background:rgba(30,41,59,0.4);border-radius:8px;padding:12px 16px;"
                 f"border:1px solid rgba(255,255,255,0.06);margin-top:8px;font-size:0.88rem;color:#C4CAD8;'>"
-                f"<strong>{selected_event}:</strong> {verdict}</div>",
+                f"<strong>{event_display}:</strong> {verdict}</div>",
                 unsafe_allow_html=True
             )
 
@@ -1290,32 +1352,17 @@ with tab3:
         st.info(f"**{translate('lowest_info')}:** {best_h_overall:02d}:00 (≈€{(max_overall - min_overall):.2f}/L {translate('below_peak')} {worst_h_overall:02d}:00). {translate('per_tank')} ~**€{50*(max_overall-min_overall):.1f}**.")
 
         # Legislative context callout (KPAnG 12:00 PM regulation)
-        if lang == "en":
-            st.markdown(
-                "<div style='background-color:#121929; border: 1px solid #1E293B; border-radius: 6px; padding: 16px; margin-top: 15px; font-size:0.85rem; color:#E8EAF0;'>"
-                "<strong>Regulatory Context (12:00 PM Price Regulation):</strong><br>"
-                "On <strong>April 1, 2026</strong>, the <em>Kraftstoffpreisanpassungsgesetz</em> (KPAnG) took effect. "
-                "Stations are legally restricted to increasing prices only once a day, exactly at 12:00 noon. Price decreases remain unrestricted at any time.<br><br>"
-                "<ul>"
-                "<li><strong>Before April 2026:</strong> Prices fluctuated freely hourly, with multiple daily peaks and troughs.</li>"
-                "<li><strong>After April 2026:</strong> A single, sharp price hike occurs at 12:00 PM, followed by a continuous downward drift. This explains why the late morning (e.g., 10:00 AM) is often the cheapest point as stations aggressively undercut each other right before the noon reset.</li>"
-                "</ul>"
-                "</div>",
-                unsafe_allow_html=True
-            )
-        else:
-            st.markdown(
-                "<div style='background-color:#121929; border: 1px solid #1E293B; border-radius: 6px; padding: 16px; margin-top: 15px; font-size:0.85rem; color:#E8EAF0;'>"
-                "<strong>Regulatorischer Hintergrund (12-Uhr-Preisregelung):</strong><br>"
-                "Am <strong>1. April 2026</strong> trat das <em>Kraftstoffpreisanpassungsgesetz</em> (KPAnG) in Kraft. "
-                "Seitdem dürfen Tankstellen ihre Preise nur noch einmal täglich um genau 12:00 Uhr mittags erhöhen. Preissenkungen sind weiterhin jederzeit unbeschränkt möglich.<br><br>"
-                "<ul>"
-                "<li><strong>Vor April 2026:</strong> Preise schwankten stündlich frei mit mehreren Auf- und Abwärtswellen am Tag.</li>"
-                "<li><strong>Nach April 2026:</strong> Ein einziger, steiler Preissprung um 12:00 Uhr, gefolgt von einer kontinuierlichen Preissenkung. Dies erklärt, warum die späten Vormittagsstunden (z.B. 10:00 Uhr) oft die günstigsten sind — Tankstellen unterbieten sich gegenseitig bis kurz vor dem Mittags-Reset.</li>"
-                "</ul>"
-                "</div>",
-                unsafe_allow_html=True
-            )
+        st.markdown(
+            f"<div style='background-color:#121929; border: 1px solid #1E293B; border-radius: 6px; padding: 16px; margin-top: 15px; font-size:0.85rem; color:#E8EAF0;'>"
+            f"<strong>{translate('regulatory_context_title')}</strong><br>"
+            f"{translate('regulatory_context_body')}<br><br>"
+            f"<ul>"
+            f"<li><strong>{translate('regulatory_context_before_label')}</strong> {translate('regulatory_context_before')}</li>"
+            f"<li><strong>{translate('regulatory_context_after_label')}</strong> {translate('regulatory_context_after')}</li>"
+            f"</ul>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TAB 4: Brand Comparison
@@ -1399,14 +1446,14 @@ with tab_brand:
                     ))
 
             fig_brand.add_hline(y=0.0, line_dash="dot", line_color="rgba(255,255,255,0.15)", line_width=1,
-                                annotation_text="National avg" if lang == "en" else "Bundesschnitt",
+                                annotation_text=translate("national_avg_short"),
                                 annotation_font_color="#8892A4")
             fig_brand = add_discount_bands(fig_brand)
             fig_brand.update_layout(
                 **PLOT_LAYOUT,
                 height=420,
                 title=translate("brand_margin_trend"),
-                yaxis_title="Margin vs. National Avg (ct/L)" if lang == "en" else "Spanne vs. Bundesschnitt (ct/L)",
+                yaxis_title=translate("brand_yaxis_margin_vs_avg"),
             )
             st.plotly_chart(fig_brand, use_container_width=True, config=PLOT_CONFIG)
 
@@ -1511,12 +1558,12 @@ with tab4:
             ))
             fig_reg_bar.add_hline(
                 y=0.0, line_dash="dot", line_color="rgba(255,255,255,0.2)", line_width=1,
-                annotation_text="National avg" if lang == "en" else "Bundesschnitt",
+                annotation_text=translate("national_avg_short"),
                 annotation_font_color="#8892A4"
             )
             fig_reg_bar.update_layout(
                 **PLOT_LAYOUT, height=420, showlegend=False,
-                yaxis_title="Retail Margin vs. National Avg (ct/L)" if lang == "en" else "Retailmarge vs. Bundesschnitt (ct/L)",
+                yaxis_title=translate("regional_yaxis_margin_vs_avg"),
             )
             st.plotly_chart(fig_reg_bar, use_container_width=True, config=PLOT_CONFIG)
 
@@ -1544,7 +1591,7 @@ with tab4:
                 st.metric(
                     translate("max_regional_premium"),
                     f"{total_spread:.2f} ct/L",
-                    f"{50 * total_spread / 100:.2f}/Tank" if lang == "en" else f"{50 * total_spread / 100:.2f}/Tank",
+                    f"{50 * total_spread / 100:.2f}{translate('per_tank_suffix')}",
                 )
 
             # ── Time series: regional margin evolution (14-day smoothed) ──
@@ -1554,7 +1601,7 @@ with tab4:
 
             # Let users pick which regions to show
             selected_regions = st.multiselect(
-                "Regions" if lang == "en" else "Regionen",
+                translate("regions_label"),
                 options=regions_sorted,
                 default=regions_sorted[:5],
             )
@@ -1584,7 +1631,7 @@ with tab4:
                 fig_reg_ts = add_discount_bands(fig_reg_ts)
                 fig_reg_ts.update_layout(
                     **PLOT_LAYOUT, height=400,
-                    yaxis_title="Retail Margin vs. Avg (ct/L)" if lang == "en" else "Retailmarge vs. Schnitt (ct/L)",
+                    yaxis_title=translate("regional_ts_yaxis"),
                 )
                 st.plotly_chart(fig_reg_ts, use_container_width=True, config=PLOT_CONFIG)
         else:

@@ -8,11 +8,13 @@ Description: Resilient, idempotent downloader for Tankerkönig historical fuel p
 import polars as pl
 import requests
 from requests.exceptions import RequestException
+import hashlib
+import json
 import os
 import sys
 import time
 import logging
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from pathlib import Path
 
 # ==========================================
@@ -22,10 +24,85 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("gasprice.download_pump_prices")
 
+# ==========================================
+# 1b. MANIFEST / HASH HELPERS
+# ==========================================
+
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+def _load_manifest(manifest_path: Path) -> dict:
+    if not manifest_path.exists():
+        return {}
+    try:
+        return json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+def _save_manifest(manifest_path: Path, manifest: dict) -> None:
+    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+
+def _median_recent_rows(manifest: dict, current_date: date, lookback_days: int = 7) -> int | None:
+    """
+    Compute the median row count of completed daily files before current_date.
+    Returns None if there are fewer than 3 historical files to compare against.
+    """
+    past_rows = []
+    for d in sorted(manifest.keys()):
+        try:
+            entry_date = date.fromisoformat(d)
+        except (ValueError, TypeError):
+            continue
+        if entry_date >= current_date:
+            continue
+        rows = manifest[d].get("rows", 0)
+        if rows and rows > 0:
+            past_rows.append(rows)
+
+    if len(past_rows) < 3:
+        return None
+
+    recent = past_rows[-lookback_days:]
+    recent_sorted = sorted(recent)
+    n = len(recent_sorted)
+    if n % 2 == 1:
+        return recent_sorted[n // 2]
+    return (recent_sorted[n // 2 - 1] + recent_sorted[n // 2]) // 2
+
+
+def _is_file_complete(
+    df: pl.DataFrame,
+    file_date: date,
+    manifest: dict,
+    lookback_days: int = 7,
+    threshold: float = 0.5,
+) -> bool:
+    """
+    Heuristic completeness check for a daily Tankerkönig price file.
+    Compares the file's row count against the median of the last lookback_days
+    completed files. If it is significantly smaller, we treat it as potentially
+    incomplete and re-fetch it on the next run.
+    """
+    if df.is_empty():
+        return False
+
+    median_rows = _median_recent_rows(manifest, file_date, lookback_days)
+    if median_rows is None:
+        # Not enough history yet; trust the file if it is non-empty.
+        return True
+
+    return df.height >= threshold * median_rows
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data" / "tankerkoenig"
 PRICES_DIR = DATA_DIR / "prices"
 STATIONS_DIR = DATA_DIR / "stations"
+MANIFEST_FILE = PRICES_DIR / ".download_manifest.json"
+STATIONS_MANIFEST_FILE = STATIONS_DIR / ".download_manifest.json"
+
+# How many days before today do we always re-download/verify?
+# This catches delayed/backfilled data and partial daily files.
+RECENT_DAYS = 7
 
 # Date range to download
 START_DATE = date(2021, 1, 1)
@@ -99,12 +176,28 @@ def download_csv(session: requests.Session, url: str, max_retries: int = 3, back
                 raise
 
 def download_stations(session: requests.Session, base_url: str):
-    """Download the latest stations metadata file."""
+    """Download the latest stations metadata file, re-downloading if the upstream content changed."""
     STATIONS_DIR.mkdir(parents=True, exist_ok=True)
     output_path = STATIONS_DIR / "latest-stations.parquet"
+    manifest = _load_manifest(STATIONS_MANIFEST_FILE)
 
-    if output_path.exists():
-        log_success(f"Stations file already exists: {output_path}")
+    # Try today, yesterday, day before yesterday
+    for d in [date.today(), date.today() - timedelta(days=1), date.today() - timedelta(days=2)]:
+        url = f"{base_url}/stations/{d.year}/{d.month:02d}/{d.strftime('%Y-%m-%d')}-stations.csv"
+        log_info(f"Trying stations file for {d}...")
+        try:
+            csv_text = download_csv(session, url)
+            if csv_text:
+                file_hash = _sha256_text(csv_text)
+                cached_hash = manifest.get("latest-stations.csv", {}).get("sha256")
+                if output_path.exists() and cached_hash == file_hash:
+                    log_success(f"Stations file unchanged: {output_path}")
+                    return
+                break
+        except RequestException:
+            continue
+    else:
+        log_error("Could not find a recent stations file. Skipping.")
         return
 
     # Use today's or yesterday's stations file
@@ -134,6 +227,13 @@ def download_stations(session: requests.Session, base_url: str):
         raise e
 
     df.write_parquet(output_path, compression="zstd")
+    file_hash = _sha256_text(csv_text)
+    manifest["latest-stations.csv"] = {
+        "sha256": file_hash,
+        "rows": df.height,
+        "downloaded_at": datetime.now().isoformat(),
+    }
+    _save_manifest(STATIONS_MANIFEST_FILE, manifest)
     log_success(f"Stations saved: {output_path} ({df.height:,} stations, {output_path.stat().st_size / 1024:.0f} KB)")
 
 def download_prices(session: requests.Session, base_url: str):
@@ -148,9 +248,11 @@ def download_prices(session: requests.Session, base_url: str):
     total_days = (end - current).days + 1
     downloaded = 0
     skipped = 0
+    updated = 0
     failed = 0
     failed_dates = []
     last_successful_date = None
+    manifest = _load_manifest(MANIFEST_FILE)
 
     log_info(f"Downloading prices: {current} → {end} ({total_days} days)")
     print("=" * 60)
@@ -162,11 +264,20 @@ def download_prices(session: requests.Session, base_url: str):
 
         day_num = (current - START_DATE).days + 1
 
-        # Skip if already downloaded (idempotent!)
-        # Crucial safety feature: always redownload/overwrite the last 2 days
-        # to ensure we don't get incomplete partial days or lag-delayed prices!
-        is_recent = current >= (end - timedelta(days=2))
-        if output_path.exists() and not is_recent:
+        # Skip if already downloaded, content hash is unchanged, and the file
+        # was previously marked complete. Always re-verify the last RECENT_DAYS
+        # to catch delayed/backfilled data or partial daily files.
+        is_recent = current >= (end - timedelta(days=RECENT_DAYS))
+        date_key = str(current)
+        cached_entry = manifest.get(date_key, {})
+
+        was_complete = cached_entry.get("complete", False)
+        if (
+            output_path.exists()
+            and not is_recent
+            and cached_entry.get("sha256")
+            and was_complete
+        ):
             skipped += 1
             last_successful_date = current
             current += timedelta(days=1)
@@ -194,10 +305,27 @@ def download_prices(session: requests.Session, base_url: str):
                 
             df.write_parquet(output_path, compression="zstd")
 
+            file_hash = _sha256_text(csv_text)
+            is_complete = _is_file_complete(df, current, manifest)
+            manifest[date_key] = {
+                "sha256": file_hash,
+                "rows": df.height,
+                "complete": is_complete,
+                "downloaded_at": datetime.now().isoformat(),
+            }
+
             size_kb = output_path.stat().st_size / 1024
-            downloaded += 1
+            if cached_entry.get("sha256") == file_hash:
+                updated += 1
+                status = f"{C_GREEN}[✔] {progress} {current}:{C_RESET} {df.height:,} rows, {size_kb:.0f} KB (verified unchanged)"
+            elif not is_complete:
+                downloaded += 1
+                status = f"{C_YELLOW}[▲] {progress} {current}:{C_RESET} {df.height:,} rows, {size_kb:.0f} KB (incomplete — will retry)"
+            else:
+                downloaded += 1
+                status = f"{C_GREEN}[✔] {progress} {current}:{C_RESET} {df.height:,} rows, {size_kb:.0f} KB"
             last_successful_date = current
-            print(f"  {C_GREEN}[✔] {progress} {current}:{C_RESET} {df.height:,} rows, {size_kb:.0f} KB")
+            print(status)
 
         except RequestException as e:
             log_error(f"Network error downloading prices for {current}: {e}")
@@ -208,8 +336,10 @@ def download_prices(session: requests.Session, base_url: str):
 
         current += timedelta(days=1)
 
+    _save_manifest(MANIFEST_FILE, manifest)
+
     print("\n" + "=" * 60)
-    print(f"Done! Downloaded: {downloaded}, Skipped (already had): {skipped}, Failed: {failed}")
+    print(f"Done! Downloaded: {downloaded}, Updated/Verified: {updated}, Skipped (unchanged): {skipped}, Failed: {failed}")
     if failed_dates:
         print(f"Failed dates (No data available yet): {', '.join(failed_dates)}")
 

@@ -163,6 +163,9 @@ def build_refined_product_baseline():
         "diesel_product_eur_liter"
     ]).sort("date")
     
+    # Defensive guard: ensure exactly one row per date
+    final_df = final_df.unique("date", keep="last")
+    
     # Write to parquet
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     final_df.write_parquet(OUTPUT_FILE, compression="zstd")

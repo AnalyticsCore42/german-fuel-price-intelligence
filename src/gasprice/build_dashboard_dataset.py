@@ -102,7 +102,7 @@ def valid_price(col_name: str) -> pl.Expr:
 
 def read_hourly_changes(path: Path) -> pl.DataFrame:
     raw = (
-        pl.read_parquet(path, columns=["date", "station_uuid", "diesel", "e5", "e10"])
+        pl.read_parquet(path, columns=["date", "station_uuid", "diesel", "e5", "e10", "dieselchange", "e5change", "e10change"])
         .with_columns(pl.col("date").dt.convert_time_zone("Europe/Berlin").alias("local_time"))
         .with_columns([
             pl.col("local_time").dt.date().alias("date"),
@@ -113,6 +113,10 @@ def read_hourly_changes(path: Path) -> pl.DataFrame:
         ])
         .sort(["station_uuid", "local_time"])
     )
+
+    # A station can have multiple price changes at the exact same timestamp
+    # (duplicate rows from overlapping imports). Keep the last one per natural key.
+    raw = raw.unique(subset=["local_time", "station_uuid"], keep="last")
 
     return (
         raw.group_by(["date", "hour", "station_uuid"])
@@ -379,6 +383,11 @@ def build_dashboard_datasets() -> None:
     daily_base_df = pl.concat(daily_parts, how="vertical").sort("date")
     daily_df = add_tax_and_spread_columns(daily_base_df)
 
+    # Defensive duplicate guards: if the same date/hour/aggregation appears
+    # from overlapping files, keep the last (most recent) value.
+    intraday_df = intraday_df.unique(subset=["date", "hour"], keep="last")
+    daily_df = daily_df.unique(subset=["date"], keep="last")
+
     intraday_df.write_parquet(INTRADAY_OUTPUT_FILE, compression="zstd")
     daily_df.write_parquet(DAILY_OUTPUT_FILE, compression="zstd")
     
@@ -388,6 +397,9 @@ def build_dashboard_datasets() -> None:
             "analysis_level", "comparison_group", "date"
         ])
         brand_daily_df = add_tax_and_spread_columns(brand_daily_base_df)
+        brand_daily_df = brand_daily_df.unique(
+            subset=["date", "analysis_level", "comparison_group"], keep="last"
+        )
         brand_daily_df.write_parquet(BRAND_DAILY_OUTPUT_FILE, compression="zstd")
 
     regional_daily_df = None
@@ -396,6 +408,9 @@ def build_dashboard_datasets() -> None:
             "region", "date"
         ])
         regional_daily_df = add_tax_and_spread_columns(regional_daily_base_df)
+        regional_daily_df = regional_daily_df.unique(
+            subset=["date", "region"], keep="last"
+        )
         regional_daily_df.write_parquet(REGIONAL_DAILY_OUTPUT_FILE, compression="zstd")
 
     print("\n==========================================")

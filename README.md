@@ -31,11 +31,27 @@ An interactive analytics pipeline and premium dashboard analyzing retail margins
 ## Getting Started
 
 ### 1. Installation
-Clone the repository and install the dependencies:
+Clone the repository and create a fresh virtual environment. **Never commit the `.venv/` folder** — it is already ignored and must be rebuilt locally on each machine/OS.
+
 ```bash
+# 1. Clone
+ git clone <your-repo-url>
+ cd 1_Project_German_GasolinePrices21.05
+
+# 2. Create virtual environment with Python 3.12
+python3.12 -m venv .venv
+
+# 3. Activate (Linux / macOS)
+source .venv/bin/activate
+
+# 3. Activate (Windows PowerShell)
+# .venv\Scripts\Activate.ps1
+
+# 4. Install dependencies
 pip install -r requirements.txt
 ```
-*(Make sure `folium` and `streamlit-folium` are installed if you are using the Finder features).*
+
+*(Make sure `folium` and `streamlit-folium` are installed if you are using the Finder features.)*
 
 ### 2. Launching the Dashboard
 Start the dashboard locally:

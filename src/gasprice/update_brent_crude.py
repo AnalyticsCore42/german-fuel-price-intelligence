@@ -148,8 +148,8 @@ def update_macro_data():
     # Filter old baseline to remove the days we are overwriting
     baseline_df = baseline_df.filter(pl.col("date") < start_fetch_date)
     
-    # Append to baseline
-    updated_baseline_df = pl.concat([baseline_df, new_merged_df]).sort("date")
+    # Append to baseline and ensure no duplicate dates (defensive guard)
+    updated_baseline_df = pl.concat([baseline_df, new_merged_df]).sort("date").unique("date", keep="last")
     updated_baseline_df.write_parquet(PARQUET_FILE)
     
     logger.info(f"Successfully appended/updated {new_merged_df.height} days in the baseline.")
