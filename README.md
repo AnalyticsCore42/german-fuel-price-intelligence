@@ -58,7 +58,7 @@ Start the dashboard locally:
 ```bash
 python3 start_dashboard.py
 ```
-This script will automatically open the UI in your default web browser on `http://localhost:8501`.
+This script will automatically open the UI in your default web browser on `http://localhost:8501` (or the next free port if 8501 is occupied).
 
 ### 3. Running the Data Update Pipeline
 To download the latest historical prices from Tankerkönig and update all dashboard metrics, run the orchestrator:
@@ -78,3 +78,9 @@ You can also run individual steps as modules, e.g.:
 ```bash
 PYTHONPATH=src python3 -m gasprice.update_brent_crude
 ```
+
+---
+
+## Next Steps
+- **Cheapest Station Around Me:** Location-aware finder that ranks nearby stations by effective price including a short detour.
+- **RAG Pipeline:** Natural-language Q&A over the dataset and documentation using a retrieval-augmented generation approach.
