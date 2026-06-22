@@ -91,7 +91,7 @@ st.markdown("""
     .kpi-delta.up   { color: #F5A623; }
     .kpi-delta.down { color: #22C55E; }
     .kpi-delta.bad  { color: #EF4444; }
-    .kpi-subtitle   { font-size: 0.75rem; color: #A0AEC0; margin-top: 6px; }
+    .kpi-subtitle   { font-size: 0.75rem; color: #94A3B8; margin-top: 6px; }
 
     /* ── Styled Selectboxes / Dropdowns ── */
     select {
@@ -131,17 +131,33 @@ st.markdown("""
     }
 
     /* ── Slider thumb affordance ── */
-    div[data-testid="stSlider"] [role="slider"] {
+    div[data-testid="stSlider"] [role="slider"],
+    div[data-baseweb="slider"] [role="slider"],
+    div[data-testid="stSlider"] div[data-testid="stThumbValue"] {
         cursor: grab !important;
         border: 2px solid #F5A623 !important;
         background: #0A0F1E !important;
+        box-shadow: 0 0 0 2px rgba(245,166,35,0.25) !important;
     }
-    div[data-testid="stSlider"] [role="slider"]:active {
+    div[data-testid="stSlider"] [role="slider"]:active,
+    div[data-baseweb="slider"] [role="slider"]:active {
         cursor: grabbing !important;
+        box-shadow: 0 0 0 4px rgba(245,166,35,0.35) !important;
+    }
+    div[data-testid="stSlider"] [role="slider"]::after,
+    div[data-baseweb="slider"] [role="slider"]::after {
+        content: "⋮⋮";
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #F5A623;
+        font-size: 8px;
+        letter-spacing: -1px;
+        height: 100%;
     }
     div[data-testid="stSlider"] [data-testid="stTickBarMin"],
     div[data-testid="stSlider"] [data-testid="stTickBarMax"] {
-        color: #A0AEC0 !important;
+        color: #94A3B8 !important;
     }
 
     /* ── Alert banner ── */
@@ -401,6 +417,7 @@ with st.sidebar:
         value=(date(2022, 1, 1), max_d),
         help=translate("date_range_help") + " " + translate("date_range_drag_help")
     )
+    st.caption(f"<span style='color:#94A3B8;font-size:0.75rem;'>{translate('date_range_drag_caption')}</span>", unsafe_allow_html=True)
 
     fuel_options = {"e5": translate("fuel_e5"), "e10": translate("fuel_e10"), "diesel": translate("fuel_diesel")}
     fuel_key = st.selectbox(

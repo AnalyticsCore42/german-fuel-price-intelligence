@@ -199,5 +199,7 @@
     "event_hover_absolute": "Tag %{x}: %{y:.3f} €/L",
     "verdict_direction_rose": "stieg",
     "verdict_direction_fell": "fiel",
-    "date_range_drag_help": "Ziehe die Regler, um den in allen Diagrammen angezeigten Zeitraum anzupassen."
+    "date_range_drag_help": "Ziehe die Regler, um den in allen Diagrammen angezeigten Zeitraum anzupassen.",
+    "date_range_drag_caption": "👆 Ziehe die orangen Regler, um den Zeitraum zu ändern.",
+    "correlation_rolling_label": "30-Tage-Gleitender"
 }
