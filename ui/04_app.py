@@ -51,6 +51,8 @@ st.markdown("""
     [data-testid="stSidebar"] {
         background: #0D1424;
         border-right: 1px solid rgba(245,166,35,0.15);
+        min-width: 360px !important;
+        max-width: 420px !important;
     }
 
     /* ── Tabs ── */
@@ -216,9 +218,10 @@ BLUE        = "#3B82F6"   # blue / reference
 SPREAD      = "#A855F7"   # violet / net product spread (distinct from amber pump price)
 
 # Fuel Discount periods
+# Translation keys are resolved inside add_discount_bands after language is selected.
 DISCOUNT_PERIODS = [
-    ("2022-06-01", "2022-08-31", "1st Fuel Discount (Tankrabatt 1) / 1. Tankrabatt"),
-    ("2026-05-01", "2026-06-30", "2nd Fuel Discount (Tankrabatt 2) / 2. Tankrabatt"),
+    ("2022-06-01", "2022-08-31", "discount_period_1_annotation"),
+    ("2026-05-01", "2026-06-30", "discount_period_2_annotation"),
 ]
 STABLE_MARGIN_BASELINE_DAYS = 365
 
@@ -386,13 +389,6 @@ with st.sidebar:
     min_d = raw_min.to_python() if hasattr(raw_min, 'to_python') else raw_min
     max_d = raw_max.to_python() if hasattr(raw_max, 'to_python') else raw_max
 
-    st.markdown(
-        f"<div style='background-color:#121929; border: 1px solid #1E293B; border-radius: 4px; padding: 10px; margin-bottom:15px; font-size:0.8rem; color:#E8EAF0;'>"
-        f"<strong>{translate("app_version_label")}</strong> v1.1.0<br>"
-        f"<strong>{translate("data_through_label")}</strong> {max_d.strftime('%Y-%m-%d')}"
-        f"</div>",
-        unsafe_allow_html=True
-    )
     st.divider()
 
     smoothing_options = {
@@ -463,8 +459,20 @@ with st.sidebar:
 # 4. MAIN AREA
 # ==========================================
 
-st.markdown(f"## {translate('main_title')}")
-st.markdown(f"<div style='color:#8892A4;margin-bottom:24px;'>{translate('main_subtitle')}</div>", unsafe_allow_html=True)
+title_html = f"""
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:24px;">
+    <div style="display:flex;flex-direction:column;gap:2px;">
+        <div style="font-size:1.6rem;font-weight:800;color:#E8EAF0;line-height:1.2;">{translate("main_title_line1")}</div>
+        <div style="font-size:1.15rem;font-weight:500;color:#A855F7;line-height:1.2;">{translate("main_title_line2")}</div>
+        <div style="font-size:0.85rem;font-weight:400;color:#8892A4;margin-top:6px;">{translate("main_subtitle")}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:0.7rem;color:#64748B;white-space:nowrap;">
+        <span>{translate("app_version_label")} v1.1.0</span>
+        <span>{translate("data_through_label")} {max_d.strftime('%Y-%m-%d')}</span>
+    </div>
+</div>
+"""
+st.markdown(title_html, unsafe_allow_html=True)
 
 # Filter based on sidebar date range
 df = df_full.filter(
@@ -519,13 +527,6 @@ def stable_pre_event_margin_baseline(
 # Calculate total tax for the "Combined" view
 df["total_tax"] = df[vat_col] + df[ebv_col] + df[co2_col] + df[energy_col]
 
-# Calculate correlation (lagged by 2 days)
-if len(df) > 10:
-    corr_df = df_full.select(["date", "Raw_Material_EUR_per_Liter", pump_price_col]).drop_nulls().to_pandas()
-    # Shift Brent by 2 days forward to align past Brent with today's Pump
-    corr_val = corr_df["Raw_Material_EUR_per_Liter"].shift(2).corr(corr_df[pump_price_col])
-else:
-    corr_val = 0.0
 
 # ── KPI Row ──────────────────────────────────────────────────────────────────
 kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
@@ -570,43 +571,43 @@ with kpi4:
     </div>""", unsafe_allow_html=True)
 
 with kpi5:
-    corr_label = translate("kpi_brent_correlation")
-    corr_sub = translate("kpi_brent_correlation_subtitle")
-    corr_str = f"{corr_val*100:.1f}%" if corr_val != 0.0 else translate("not_available")
-    st.markdown(f"""<div class='kpi-card'>
-        <div class='kpi-label'>{corr_label}</div>
-        <div class='kpi-value'>{corr_str}</div>
-        <div class='kpi-subtitle'>{corr_sub}</div>
-    </div>""", unsafe_allow_html=True)
+    # Tax-cut pass-through: share of fuel tax cuts that actually reached consumers.
+    # Compares pump-price drop with tax drop during each Tankrabatt window.
+    # 100% = full pass-through; 0% = retailers absorbed the entire cut.
+    max_date = df_full["date"].max()
+    tax_cut_periods = [
+        (date(2022, 6, 1), date(2022, 8, 31)),
+        (date(2026, 5, 1), date(2026, 6, 30)),
+    ]
+    pass_throughs = []
+    for start, planned_end in tax_cut_periods:
+        if start > max_date:
+            continue
+        actual_end = min(planned_end, max_date)
+        period_days = (actual_end - start).days + 1
+        pre_start = start - timedelta(days=period_days)
+        pre_end = start - timedelta(days=1)
+        pre_df = df_full.filter((pl.col("date") >= pre_start) & (pl.col("date") <= pre_end))
+        disc_df = df_full.filter((pl.col("date") >= start) & (pl.col("date") <= actual_end))
+        if pre_df.is_empty() or disc_df.is_empty():
+            continue
+        total_tax_expr = pl.col(vat_col) + pl.col(ebv_col) + pl.col(co2_col) + pl.col(energy_col)
+        tax_drop = pre_df.select(total_tax_expr.mean()).item() - disc_df.select(total_tax_expr.mean()).item()
+        pump_drop = pre_df[pump_price_col].mean() - disc_df[pump_price_col].mean()
+        if tax_drop and tax_drop != 0:
+            pass_throughs.append(pump_drop / tax_drop)
 
-    # Tiny sparkline: rolling 30-day Brent-pump correlation
-    if corr_val != 0.0 and len(corr_df) > 30:
-        rolling_corr = (
-            corr_df["Raw_Material_EUR_per_Liter"]
-            .shift(2)
-            .rolling(window=30, min_periods=5)
-            .corr(corr_df[pump_price_col])
-        )
-        fig_spark = go.Figure(go.Scatter(
-            x=corr_df["date"],
-            y=rolling_corr,
-            mode="lines",
-            line=dict(color=ACCENT, width=1.5),
-            fill="tozeroy",
-            fillcolor="rgba(245,166,35,0.08)",
-            hovertemplate="30d correlation: %{y:.2f}<extra></extra>",
-        ))
-        fig_spark.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=0, r=0, t=0, b=0),
-            xaxis=dict(visible=False),
-            yaxis=dict(visible=False, range=[0, 1]),
-            height=55,
-            showlegend=False,
-        )
-        st.plotly_chart(fig_spark, use_container_width=True, config=PLOT_CONFIG)
+    if pass_throughs:
+        avg_pass = sum(pass_throughs) / len(pass_throughs) * 100
+        pass_str = f"{avg_pass:.0f}%"
+    else:
+        pass_str = translate("not_available")
+
+    st.markdown(f"""<div class='kpi-card'>
+        <div class='kpi-label'>{translate('kpi_tax_pass_through')}</div>
+        <div class='kpi-value'>{pass_str}</div>
+        <div class='kpi-subtitle'>{translate('kpi_tax_pass_through_subtitle')}</div>
+    </div>""", unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -624,7 +625,7 @@ def add_discount_bands(fig):
     colors = ["rgba(245,166,35,0.12)", "rgba(59,130,246,0.10)"]
     visible_min = df["date"].astype(str).min()
     visible_max = df["date"].astype(str).max()
-    for (x0, x1, label), color in zip(DISCOUNT_PERIODS, colors):
+    for (x0, x1, label_key), color in zip(DISCOUNT_PERIODS, colors):
         if x0 <= visible_max and x1 >= visible_min:
             fig.add_vrect(
                 x0=x0, x1=x1, fillcolor=color, opacity=1,
@@ -632,6 +633,7 @@ def add_discount_bands(fig):
             )
             # Clamp the horizontal start position to visible area
             anno_x = max(x0, visible_min)
+            label_text = translate(label_key)
             
             # Determine alignment anchor dynamically to prevent overflowing the right edge
             try:
@@ -650,7 +652,7 @@ def add_discount_bands(fig):
                 y=0.98,
                 xref="x",
                 yref="paper",
-                text=label,
+                text=label_text,
                 showarrow=False,
                 xanchor=anchor,
                 yanchor="top",
@@ -927,7 +929,7 @@ def get_event_study_timeline(
 with tab1:
     with st.container():
         st.markdown(f"<h4 style='margin:0;'>{translate('brent_vs_pump_title')} — {fuel_type}</h4>", unsafe_allow_html=True)
-        st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{translate('brent_vs_pump_note')}</span>", unsafe_allow_html=True)
+        st.markdown(f"<p style='color:#8892A4;font-size:0.85rem;opacity:0.65;margin-top:8px;margin-bottom:0;'>{translate('brent_vs_pump_note')}</p>", unsafe_allow_html=True)
 
         fig = go.Figure()
         
@@ -1034,7 +1036,7 @@ with tab1:
         # Determine max Y axis to keep charts stable
         max_y = df[pump_price_col].max() * 1.1
         fig.update_layout(**PLOT_LAYOUT, height=480, yaxis_title=translate("axis_euro_per_liter"), yaxis_range=[0, max_y])
-        st.plotly_chart(fig, use_container_width=True, config=PLOT_CONFIG)
+        st.plotly_chart(fig, width='stretch', config=PLOT_CONFIG)
 
 
             
@@ -1064,7 +1066,7 @@ with tab1:
             fig_trend.add_hline(y=50, line_dash="dot", line_color=BLUE, line_width=1,
                    annotation_text=threshold_label, annotation_font_color=BLUE)
             fig_trend.update_layout(**PLOT_LAYOUT, height=350, yaxis_title=translate("tax_percent"), yaxis_ticksuffix="%")
-            st.plotly_chart(fig_trend, use_container_width=True, config=PLOT_CONFIG)
+            st.plotly_chart(fig_trend, width='stretch', config=PLOT_CONFIG)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TAB 2: Net Product Spread
@@ -1094,7 +1096,7 @@ with tab2:
         height=400,
         yaxis_title=f"{translate('net_spread')} (€/L)",
     )
-    st.plotly_chart(fig2, use_container_width=True, config=PLOT_CONFIG)
+    st.plotly_chart(fig2, width='stretch', config=PLOT_CONFIG)
 
     # Sub-metrics below chart
     st.markdown("<br>", unsafe_allow_html=True)
@@ -1137,7 +1139,7 @@ with tab2:
             barmode="group",
             yaxis_title=translate("axis_euro_per_liter"),
         )
-        st.plotly_chart(fig_pass, use_container_width=True, config=PLOT_CONFIG)
+        st.plotly_chart(fig_pass, width='stretch', config=PLOT_CONFIG)
 
         table_rows = []
         for row in pass_rows:
@@ -1257,7 +1259,7 @@ with tab2:
             "showlegend": False,
         }
         fig_event.update_layout(**event_layout)
-        st.plotly_chart(fig_event, use_container_width=True, config=PLOT_CONFIG)
+        st.plotly_chart(fig_event, width='stretch', config=PLOT_CONFIG)
 
         # ── Auto-generated interpretation: compute the numbers, show the verdict ──
         if not group.empty and normalize_opt:
@@ -1363,7 +1365,7 @@ with tab3:
 
     fig3.update_layout(**PLOT_LAYOUT, height=400, xaxis_title=translate("hour_of_day"), yaxis_title=translate("avg_pump_price"))
     fig3.update_xaxes(tickmode="linear", dtick=2, gridcolor="rgba(255,255,255,0.05)")
-    st.plotly_chart(fig3, use_container_width=True, config=PLOT_CONFIG)
+    st.plotly_chart(fig3, width='stretch', config=PLOT_CONFIG)
 
     if primary_stats is not None:
         st.info(f"**{translate('lowest_info')}:** {best_h_overall:02d}:00 (≈€{(max_overall - min_overall):.2f}/L {translate('below_peak')} {worst_h_overall:02d}:00). {translate('per_tank')} ~**€{50*(max_overall-min_overall):.1f}**.")
@@ -1472,7 +1474,7 @@ with tab_brand:
                 title=translate("brand_margin_trend"),
                 yaxis_title=translate("brand_yaxis_margin_vs_avg"),
             )
-            st.plotly_chart(fig_brand, use_container_width=True, config=PLOT_CONFIG)
+            st.plotly_chart(fig_brand, width='stretch', config=PLOT_CONFIG)
 
             _, event_start, planned_end = policy_windows[selected_policy]
             brand_rows = calculate_brand_policy_rows(
@@ -1500,7 +1502,7 @@ with tab_brand:
                     yaxis_title=f"{translate('delta_margin')} (€/L)",
                     showlegend=False,
                 )
-                st.plotly_chart(fig_brand_delta, use_container_width=True, config=PLOT_CONFIG)
+                st.plotly_chart(fig_brand_delta, width='stretch', config=PLOT_CONFIG)
 
                 table_rows = []
                 for row in brand_rows:
@@ -1582,7 +1584,7 @@ with tab4:
                 **PLOT_LAYOUT, height=420, showlegend=False,
                 yaxis_title=translate("regional_yaxis_margin_vs_avg"),
             )
-            st.plotly_chart(fig_reg_bar, use_container_width=True, config=PLOT_CONFIG)
+            st.plotly_chart(fig_reg_bar, width='stretch', config=PLOT_CONFIG)
 
             # ── KPI metrics ──
             c1, c2, c3 = st.columns(3)
@@ -1650,7 +1652,7 @@ with tab4:
                     **PLOT_LAYOUT, height=400,
                     yaxis_title=translate("regional_ts_yaxis"),
                 )
-                st.plotly_chart(fig_reg_ts, use_container_width=True, config=PLOT_CONFIG)
+                st.plotly_chart(fig_reg_ts, width='stretch', config=PLOT_CONFIG)
         else:
             st.info(translate("regional_data_missing"))
     else:

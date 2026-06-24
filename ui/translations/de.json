@@ -22,7 +22,7 @@
     "net_spread": "Netto-Produktspanne",
     "spread_delta_discount_1": "Spannenänderung im Tankrabatt 1",
     "pre_discount_compared": "Vergleich mit 365-Tage-Basis vor Steueränderung",
-    "spread_kpi_note": "Nach Steuern, vor Raffinerie-/Handelskosten",
+    "spread_kpi_note": "Nach Steuern; enthält Raffination, Logistik und Handelsmarge",
     "tab_brent": "Brent vs. Zapfsäule",
     "tab_spread": "Netto-Produktspanne",
     "tab_rhythm": "Tagesrhythmus",
@@ -151,6 +151,8 @@
     "national_avg_short": "Bundesschnitt",
     "not_available": "k.A.",
     "discount_period_1": "1. Tankrabatt",
+    "discount_period_1_annotation": "1. Tankrabatt",
+    "discount_period_2_annotation": "2. Tankrabatt",
     "discount_period_2": "2. Tankrabatt",
     "policy_event_1_start": "Tankrabatt 1 Start (Jun 2022)",
     "policy_event_1_end": "Tankrabatt 1 Ende (Sep 2022)",
@@ -201,5 +203,9 @@
     "verdict_direction_fell": "fiel",
     "date_range_drag_help": "Ziehe die Regler, um den in allen Diagrammen angezeigten Zeitraum anzupassen.",
     "date_range_drag_caption": "👆 Ziehe die orangen Regler, um den Zeitraum zu ändern.",
-    "correlation_rolling_label": "30-Tage-Gleitender"
+    "correlation_rolling_label": "30-Tage-Gleitender",
+    "main_title_line1": "Deutsche Kraftstoffpreise",
+    "main_title_line2": "Netto-Produktspanne",
+    "kpi_tax_pass_through": "Tankrabatt-Weitergabe",
+    "kpi_tax_pass_through_subtitle": "Anteil der Steuersenkung, der an Verbraucher weitergegeben wurde"
 }
