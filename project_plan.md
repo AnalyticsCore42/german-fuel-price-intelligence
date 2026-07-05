@@ -1,5 +1,5 @@
 Project Plan
-Last updated: 2026-07-04
+Last updated: 2026-07-05
 
 ## Recent Changes
 - Added **Tank Advisor** tab (`ui/tank_advisor_tab.py`, `src/gasprice/tank_advisor.py`) with browser geolocation, Nominatim geocoding, Folium map, and driving-cost model.
@@ -80,3 +80,4 @@ Config: `pytest.ini` + `.coveragerc` (omits IO-only scripts and validation scrip
 3. **RAG Pipeline** — text-to-SQL over the parquet files via DuckDB + LLM tool-calling, to enable natural language queries on price/margin data.
 4. **Code Quality** — add tests for `build_dashboard_dataset.py` and `download_pump_prices.py`; consider splitting very large modules (`build_dashboard_dataset.py`, `ui/04_app.py`) into smaller files.
 5. **Deployment** — keep Cloud Run deployment up to date (`docs/gcp_deployment.md`).
+6. **GitHub Repo Link** — add a source-code link to the dashboard footer and/or the local `PROJECT_LINKS.md` file once the repo visibility (public/private) is decided.
