@@ -1,7 +1,7 @@
 # German Fuel Price Intelligence
 
-[![GCP Cloud Run](https://img.shields.io/badge/Deployed%20on-GCP%20Cloud%20Run-blue?logo=google-cloud&logoColor=white)](https://gasoline-dashboard-glxitfsnbq-ey.a.run.app)
-**Live Demo:** [gasoline-dashboard-glxitfsnbq-ey.a.run.app](https://gasoline-dashboard-glxitfsnbq-ey.a.run.app)
+[![GCP Cloud Run](https://img.shields.io/badge/Deployed%20on-GCP%20Cloud%20Run-blue?logo=google-cloud&logoColor=white)](https://gasoline-dashboard-751243983026.europe-west3.run.app)
+**Live Demo:** [gasoline-dashboard-751243983026.europe-west3.run.app](https://gasoline-dashboard-751243983026.europe-west3.run.app)
 
 An interactive analytics pipeline and premium dashboard analyzing retail margins, taxation, policy interventions (the 2022 and 2026 *Tankrabatt* fuel discounts), and spatial pricing dynamics across 14,000+ gasoline stations in Germany.
 
