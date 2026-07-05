@@ -11,8 +11,8 @@ An interactive analytics pipeline and premium dashboard analyzing retail margins
 - **Taxes & Margins Engine:** Automatically calculates net prices, VAT, CO₂ pricing (including 2026 auction corridors), EBV contributions, and energy taxes.
 - **Refined Product Spreads:** Tracks refinery vs. retail margins by blending futures data (RBOB, Ethanol, Heating Oil) to isolate actual retail profit margins.
 - **Daily Rhythms:** Analyzes hourly pricing dynamics, highlighting the impact of the April 1, 2026 regulation restricting price hikes to once a day (12:00 PM).
-- **Brand & Regional Comparisons:** Evaluates pricing deviations across major corporate groups, independent operators, and geographic zones (PLZ).
-- **Smart Gas Station Finder (Upcoming):** Finds local stations and optimizes recommendations by factoring in vehicle consumption, tank size, and detour fuel costs.
+- **Brand & Regional Comparisons:** Evaluates pricing deviations across major corporate groups, independent operators, and geographic zones (PLZ), including brand-level price-change frequency.
+- **Tank Advisor:** Location-aware station recommender that ranks nearby stations by effective price including driving cost, vehicle consumption, tank size, and a detour estimate.
 
 ---
 
@@ -22,9 +22,12 @@ An interactive analytics pipeline and premium dashboard analyzing retail margins
 - `scripts/exploratory/` — Diagnostic and exploratory analysis scripts.
 - `ui/04_app.py` — Streamlit dashboard containing the analytical tabs.
 - `ui/translations/` — Externalized i18n strings for the dashboard (`en.json`, `de.json`).
+- `ui/tank_advisor_tab.py` — Tank Advisor tab implementation.
 - `start_dashboard.py` — Convenience launcher script that automatically overrides headless settings to open the dashboard in your system's browser.
-- `docs/` — Ground-truth documentation including legislative policy timelines, corporate brand ownership trees, and RAG strategy details.
+- `docs/` — Ground-truth documentation including legislative policy timelines, corporate brand ownership trees, RAG strategy details, and the data dictionary.
 - `data/` — Storage folder for aggregated price statistics and macroeconomic baseline Parquet datasets.
+- `tests/` — Unit tests for the pipeline, tax engine, and UI components.
+- `LICENSE` — MIT license for the project code.
 
 ---
 
@@ -81,6 +84,42 @@ PYTHONPATH=src python3 -m gasprice.update_brent_crude
 
 ---
 
+## Methodology & Key Decisions
+
+### National Average Weighting
+The dashboard national average is computed as a **station-count-weighted average** of the project's geographic regions, using the `station_count` field in `data/processed_regional_daily_margins.parquet`.
+
+**Why:** An unweighted mean of station-hour observations over-represents regions with many small, volatile stations and under-represents stable, high-volume regions. Weighting by station count gives each region influence proportional to its share of the station network, producing a more representative national price. Empirical comparison showed the difference is usually small (~0.3 ct/L) but can exceed 5 ct/L on volatile days, especially since 2024. Population weighting was tested and produced nearly identical results because station counts correlate closely with population.
+
+### Tank Advisor Cost Model
+The Tank Advisor computes total cost for a full tank as:
+
+```
+total_cost = (station_price × tank_size) + (station_price × round_trip_km × consumption_l_per_100km / 100)
+```
+
+where `round_trip_km = 2 × 1.3 × straight_line_distance_km`. The 1.3× factor estimates actual road distance; doubling it accounts for the drive there and back. This prevents the model from over-recommending far-away stations that only look cheap because their driving cost is understated.
+
+The advisor uses **point-in-time raw prices** (`data/tankerkoenig/prices/{YYYY}/{YYYY-MM-DD}.parquet`): for the user-selected date and time, it loads the last observation reported by each station up to that moment. This avoids the stale single-observation prices that were causing absurd recommendations like driving from Kassel to Hann. Münden for an imaginary €1.41/L E5 price.
+
+The UI shows three reference stations — **recommended** (cheapest total cost), **closest**, and **most expensive** — plus a savings projection in €/month and €/year based on adjustable monthly driving distance.
+
+Location input supports browser geolocation (`streamlit-js-eval`) and Photon (OpenStreetMap) address autocomplete with city names and postcodes.
+
+### Data Quality
+The pipeline now runs lightweight quality checks before writing daily outputs: date-gap detection, low-reporting-hour warnings, single-day price-jump outliers (>30 ct/L), and brand-level change-frequency sanity checks. These are logged as warnings rather than hard failures so a single noisy day does not block incremental updates.
+
+---
+
+## Data Sources & Licensing
+
+- **Fuel price & station data:** [Tankerkönig](https://www.tankerkoenig.de) historical price archive, provided under the **CC BY-NC-SA 4.0** license (non-commercial use with attribution). The raw per-day files are not committed to this repository; only aggregated dashboard datasets are tracked.
+- **Macroeconomic baselines:** Brent crude, EUR/USD, RBOB gasoline, heating oil, and ethanol futures data from [Yahoo Finance](https://finance.yahoo.com) for research and non-commercial analysis.
+
+The source code in this repository is released under the **MIT License** (see `LICENSE`). The aggregated fuel-price outputs remain subject to the underlying Tankerkönig non-commercial terms.
+
+---
+
 ## Next Steps
-- **Cheapest Station Around Me:** Location-aware finder that ranks nearby stations by effective price including a short detour.
 - **RAG Pipeline:** Natural-language Q&A over the dataset and documentation using a retrieval-augmented generation approach.
+- **ML Forecasting:** Use station-level or regional features to predict short-term price movements and pass-through effects.

@@ -10,6 +10,8 @@ requests==2.34.2
 pytest==9.1.1
 pytest-cov==7.1.0
 
-# Optional: only needed for the Gas Station Finder map features
-# folium
-# streamlit-folium
+# Tank Advisor map features
+folium==0.20.0
+streamlit-folium==0.27.2
+geopy==2.4.1
+streamlit-js-eval==1.0.0

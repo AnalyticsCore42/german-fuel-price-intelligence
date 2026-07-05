@@ -717,4 +717,35 @@ an optional speedup.
 
 ---
 
+## 16. Adapting These Guidelines to a Specific Project
+
+These guidelines are intentionally general. They can be reused across Python projects, but every project has a different stack, scope, and team. For each repository, create a short local addendum that records only the decisions that differ from or extend these defaults.
+
+### Recommended local addendum files
+
+| File | Purpose |
+| --- | --- |
+| `AGENTS.md` | Agent-specific context: project structure, build/test commands, naming conventions, files to avoid editing, and where to find ground-truth docs. |
+| `CONVENTIONS.md` | Human-readable project conventions not covered here (e.g. specific Polars patterns, dashboard rules, domain terminology). |
+| `docs/data_dictionary.md` | Schema documentation for the project's structured datasets. |
+
+### What to put in the local addendum
+
+- **Stack and versions**: the actual versions used (e.g. Polars 1.41, Streamlit 1.58) rather than the generic references in these guidelines.
+- **Project-specific overrides**: e.g. "this project uses Polars for everything; avoid Pandas unless interfacing with a library that requires it."
+- **Build/test/run commands**: exact commands to run tests, lint, type checks, and the app.
+- **Architecture boundaries**: which modules are allowed to import which, and where new code should live.
+- **Domain decisions**: why certain business rules exist (e.g. brand bucketing thresholds, national-average weighting choices).
+
+### What to keep in these shared guidelines
+
+- Python 3.12+ syntax preferences.
+- General Polars / Pandas / ML best practices.
+- Formatting, naming, documentation, error-handling, and performance principles.
+- The default pre-commit checklist.
+
+Keep the shared file stable; put per-project drift in the local addendum.
+
+---
+
 *Last updated: 2026-05-05*

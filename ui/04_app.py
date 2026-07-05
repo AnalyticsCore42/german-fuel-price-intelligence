@@ -9,20 +9,34 @@ Inputs:  data/processed_daily_margins.parquet
 Outputs: Interactive dark-mode dashboard on http://localhost:8501
 """
 
+import sys
+from pathlib import Path
+
+# Make src/ importable regardless of where streamlit is launched from
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
+
 import streamlit as st
 import polars as pl
 import plotly.graph_objects as go
 import os
 import json
+import math
 from math import erfc, sqrt
 from datetime import date, timedelta
-from pathlib import Path
+
+# Make the ui/ folder importable so we can keep the Tank Advisor tab in its own module
+sys.path.insert(0, str(PROJECT_ROOT / "ui"))
+import tank_advisor_tab
 
 # Resolve data path relative to this script file — works from any working directory
 DATA_DIR = Path(__file__).parent.parent / "data"
+DAILY_FILE = DATA_DIR / "processed_daily_margins.parquet"
 INTRADAY_FILE = DATA_DIR / "processed_intraday.parquet"
 BRAND_DAILY_FILE = DATA_DIR / "processed_brand_daily_margins.parquet"
 REGIONAL_DAILY_FILE = DATA_DIR / "processed_regional_daily_margins.parquet"
+STATE_FILE = DATA_DIR / "station_carry_forward_state.parquet"
+STATIONS_FILE = DATA_DIR / "tankerkoenig" / "stations" / "cleaned-stations.parquet"
 
 # ==========================================
 # 1. SETUP & CONFIGURATION
@@ -254,7 +268,6 @@ POLICY_MILESTONES = {
     ],
 }
 
-@st.cache_data
 def load_translations():
     translations_dir = Path(__file__).parent / "translations"
     translations = {}
@@ -327,12 +340,62 @@ def _compute_smoothing(df: pl.DataFrame, smoothing_days: int, partition_cols: li
     return df
 
 @st.cache_data(show_spinner="Loading aggregated spreads + taxes… / Lade aggregierte Spannen + Steuern…")
-def load_data(start_date: date = date(2021, 1, 1), smoothing_days: int = 1):
+def _station_count_weighted_national(regional_df: pl.DataFrame) -> pl.DataFrame:
+    """
+    Compute a station-count-weighted national daily average from the regional
+    daily margins file. Unknown/unmapped regions are excluded.
+    """
+    known = regional_df.filter(pl.col("region") != "Unknown Region")
+    return (
+        known.group_by("date")
+        .agg([
+            (pl.col("price_diesel") * pl.col("station_count")).sum() / pl.col("station_count").sum(),
+            (pl.col("price_e5") * pl.col("station_count")).sum() / pl.col("station_count").sum(),
+            (pl.col("price_e10") * pl.col("station_count")).sum() / pl.col("station_count").sum(),
+        ])
+        .rename({
+            "price_diesel": "price_diesel_weighted",
+            "price_e5": "price_e5_weighted",
+            "price_e10": "price_e10_weighted",
+        })
+        .sort("date")
+    )
+
+
+def load_data(start_date: date | None = None, smoothing_days: int = 1):
     """
     Loads the real aggregated daily spreads (Tankerkönig + Macro).
+    The raw pump-price columns are replaced with a station-count-weighted
+    national average computed from the regional file, which is more
+    representative than a simple unweighted mean.
     """
-    df = pl.read_parquet(DATA_DIR / "processed_daily_margins.parquet")
-    df = df.filter(pl.col("date") >= start_date)
+    df = pl.read_parquet(DAILY_FILE)
+    if start_date is not None:
+        df = df.filter(pl.col("date") >= start_date)
+
+    if REGIONAL_DAILY_FILE.exists():
+        regional = pl.read_parquet(REGIONAL_DAILY_FILE)
+        weighted = _station_count_weighted_national(regional)
+        df = df.join(weighted, on="date", how="left")
+        df = df.with_columns([
+            pl.when(pl.col("price_diesel_weighted").is_not_null())
+            .then(pl.col("price_diesel_weighted"))
+            .otherwise(pl.col("price_diesel"))
+            .alias("price_diesel"),
+            pl.when(pl.col("price_e5_weighted").is_not_null())
+            .then(pl.col("price_e5_weighted"))
+            .otherwise(pl.col("price_e5"))
+            .alias("price_e5"),
+            pl.when(pl.col("price_e10_weighted").is_not_null())
+            .then(pl.col("price_e10_weighted"))
+            .otherwise(pl.col("price_e10"))
+            .alias("price_e10"),
+        ]).drop([
+            "price_diesel_weighted",
+            "price_e5_weighted",
+            "price_e10_weighted",
+        ])
+
     df = _compute_smoothing(df, smoothing_days)
     return df
 
@@ -407,10 +470,13 @@ with st.sidebar:
 
     df_full = load_data(smoothing_days=smoothing_days)
 
+    # Default view focuses on the period around the 2022 tax-break / Ukraine-war
+    # price shock, but the full historical range remains available on the slider.
+    focus_start = max(min_d, date(2021, 12, 24))  # ~2 months before 24 Feb 2022
     date_range = st.slider(
         translate("date_range"),
         min_value=min_d, max_value=max_d,
-        value=(date(2022, 1, 1), max_d),
+        value=(focus_start, max_d),
         help=translate("date_range_help") + " " + translate("date_range_drag_help")
     )
     st.caption(f"<span style='color:#94A3B8;font-size:0.75rem;'>{translate('date_range_drag_caption')}</span>", unsafe_allow_html=True)
@@ -513,6 +579,15 @@ def mean_for_date_window(source_df: pl.DataFrame, value_col: str, start: date, e
     return float(value) if value is not None else float("nan")
 
 
+def mean_total_tax_for_window(source_df: pl.DataFrame, start: date, end: date) -> float:
+    """Mean total tax (VAT + EBV + CO2 + energy) over a date window for the selected fuel."""
+    window_df = source_df.filter((pl.col("date") >= start) & (pl.col("date") <= end))
+    if window_df.is_empty():
+        return float("nan")
+    total_expr = pl.col(vat_col) + pl.col(ebv_col) + pl.col(co2_col) + pl.col(energy_col)
+    return float(window_df.select(total_expr.mean()).item())
+
+
 def stable_pre_event_margin_baseline(
     source_df: pl.DataFrame,
     margin_col: str,
@@ -529,7 +604,7 @@ df["total_tax"] = df[vat_col] + df[ebv_col] + df[co2_col] + df[energy_col]
 
 
 # ── KPI Row ──────────────────────────────────────────────────────────────────
-kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+kpi1, kpi2, kpi3, kpi4, kpi5, kpi6 = st.columns(6)
 
 current_raw  = df["Raw_Material_EUR_per_Liter"].iloc[-1]
 current_pump = df[pump_price_col].iloc[-1]
@@ -562,15 +637,68 @@ with kpi3:
         <div class='kpi-subtitle'>{translate('spread_kpi_note')}</div>
     </div>""", unsafe_allow_html=True)
 
+# Compute consistent discount-window stats for both tax breaks.
+# Pump price change, net-spread change and tax cut are all measured against the
+# immediately preceding window of the same length, so they add up:
+# pump_change = margin_change - tax_drop.
+d1_start, d1_end = date(2022, 6, 1), date(2022, 8, 31)
+d2_start, d2_end = date(2026, 5, 1), date(2026, 6, 30)
+
+
+def _discount_stats(start: date, end: date) -> tuple[float, float, float]:
+    period_days = (end - start).days + 1
+    pre_start = start - timedelta(days=period_days)
+    pre_end = start - timedelta(days=1)
+    pre_pump = mean_for_date_window(df_full, pump_price_col, pre_start, pre_end)
+    disc_pump = mean_for_date_window(df_full, pump_price_col, start, end)
+    pre_margin = mean_for_date_window(df_full, margin_col, pre_start, pre_end)
+    disc_margin = mean_for_date_window(df_full, margin_col, start, end)
+    pre_tax = mean_total_tax_for_window(df_full, pre_start, pre_end)
+    disc_tax = mean_total_tax_for_window(df_full, start, end)
+
+    pump_change = disc_pump - pre_pump
+    margin_change = disc_margin - pre_margin
+    tax_drop = pre_tax - disc_tax
+    return pump_change, margin_change, tax_drop
+
+
+max_date = df_full["date"].max()
+d1_pump_change, d1_margin_change, d1_tax_drop = _discount_stats(d1_start, d1_end)
+d2_actual_end = min(d2_end, max_date)
+d2_pump_change, d2_margin_change, d2_tax_drop = _discount_stats(d2_start, d2_actual_end)
+
+
+def _fmt_delta(v: float) -> str:
+    if v != v:
+        return "n/a"
+    sign = "+" if v > 0 else ""
+    return f"{sign}€{v:.3f}/L"
+
+
+def _fmt_tax_drop(v: float) -> str:
+    if v != v:
+        return "n/a"
+    return f"€{v:.3f}/L"
+
 with kpi4:
-    sign = "+" if delta_marg > 0 else ""
     st.markdown(f"""<div class='kpi-card insight'>
-        <div class='kpi-label'>{translate('spread_delta_discount_1')}</div>
-        <div class='kpi-value'>{sign}€{delta_marg:.3f}</div>
-        <div class='kpi-subtitle'>{translate('pre_discount_compared')}</div>
+        <div class='kpi-label'>{translate('discount_1_short')}</div>
+        <div class='kpi-value'>{_fmt_delta(d1_pump_change)}</div>
+        <div class='kpi-subtitle'>{translate('pump_price_change_label')}</div>
+        <div class='kpi-subtitle'>{translate('tax_break_tax_drop')}: {_fmt_tax_drop(d1_tax_drop)} · {translate('net_spread_change_label')}: {_fmt_delta(d1_margin_change)}</div>
+        <div class='kpi-subtitle'>{translate('discount_baseline_subtitle')}</div>
     </div>""", unsafe_allow_html=True)
 
 with kpi5:
+    st.markdown(f"""<div class='kpi-card insight'>
+        <div class='kpi-label'>{translate('discount_2_short')}</div>
+        <div class='kpi-value'>{_fmt_delta(d2_pump_change)}</div>
+        <div class='kpi-subtitle'>{translate('pump_price_change_label')}</div>
+        <div class='kpi-subtitle'>{translate('tax_break_tax_drop')}: {_fmt_tax_drop(d2_tax_drop)} · {translate('net_spread_change_label')}: {_fmt_delta(d2_margin_change)}</div>
+        <div class='kpi-subtitle'>{translate('discount_baseline_subtitle')}</div>
+    </div>""", unsafe_allow_html=True)
+
+with kpi6:
     # Tax-cut pass-through: share of fuel tax cuts that actually reached consumers.
     # Compares pump-price drop with tax drop during each Tankrabatt window.
     # 100% = full pass-through; 0% = retailers absorbed the entire cut.
@@ -612,10 +740,12 @@ with kpi5:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ── Tabs ────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab_brand, tab4 = st.tabs([
+tab1, tab2, tab3, tab_advisor, tab_rag, tab_brand, tab_location = st.tabs([
     translate("tab_brent"),
     translate("tab_spread"),
     translate("tab_rhythm"),
+    translate("tab_advisor"),
+    translate("tab_rag"),
     translate("tab_brand"),
     translate("tab_location"),
 ])
@@ -634,7 +764,7 @@ def add_discount_bands(fig):
             # Clamp the horizontal start position to visible area
             anno_x = max(x0, visible_min)
             label_text = translate(label_key)
-            
+
             # Determine alignment anchor dynamically to prevent overflowing the right edge
             try:
                 from datetime import datetime
@@ -663,6 +793,21 @@ def add_discount_bands(fig):
                 borderpad=4,
                 opacity=0.95,
             )
+    return fig
+
+
+def add_current_price_line(fig):
+    """Add an orange horizontal line at the current pump price."""
+    fig.add_hline(
+        y=current_pump,
+        line_dash="dash",
+        line_color="#F5A623",
+        line_width=2,
+        annotation_text=f"€{current_pump:.3f}/L",
+        annotation_position="right",
+        annotation_font_color="#F5A623",
+        annotation_font_size=11,
+    )
     return fig
 
 
@@ -1032,14 +1177,20 @@ with tab1:
         ))
         
         fig = add_discount_bands(fig)
-        
+        fig = add_current_price_line(fig)
+
         # Determine max Y axis to keep charts stable
         max_y = df[pump_price_col].max() * 1.1
         fig.update_layout(**PLOT_LAYOUT, height=480, yaxis_title=translate("axis_euro_per_liter"), yaxis_range=[0, max_y])
         st.plotly_chart(fig, width='stretch', config=PLOT_CONFIG)
 
+        st.markdown(
+            f"<p style='color:#8892A4;font-size:0.8rem;margin-top:-8px;'>"
+            f"{translate('brent_vs_pump_disclaimer')}"
+            f"</p>",
+            unsafe_allow_html=True,
+        )
 
-            
         if show_tax_trend:
             st.markdown(f"#### {translate('tax_burden_title')}")
             st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{translate('tax_burden_note')}</span>", unsafe_allow_html=True)
@@ -1384,7 +1535,7 @@ with tab3:
         )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# TAB 4: Brand Comparison
+# TAB 6: Brand Comparison
 # ──────────────────────────────────────────────────────────────────────────────
 with tab_brand:
     st.markdown(f"#### {translate('brand_title')}")
@@ -1476,6 +1627,40 @@ with tab_brand:
             )
             st.plotly_chart(fig_brand, width='stretch', config=PLOT_CONFIG)
 
+            # ── Price change frequency by group ──
+            st.markdown(f"#### {translate('brand_changes_title')}")
+            st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{translate('brand_changes_note')}</span>", unsafe_allow_html=True)
+
+            changes_col = f"changes_{fuel_key}"
+            fig_changes = go.Figure()
+            if changes_col in visible_brand_df.columns and not visible_brand_df.is_empty():
+                changes_pd = visible_brand_df.sort(["comparison_group", "date"]).to_pandas()
+                for idx, group_name in enumerate(selected_groups):
+                    group_pd = changes_pd[changes_pd["comparison_group"] == group_name]
+                    if group_pd.empty:
+                        continue
+                    smoothed = (
+                        group_pd.sort_values("date")[changes_col]
+                        .rolling(14, min_periods=1)
+                        .mean()
+                    )
+                    fig_changes.add_trace(go.Scatter(
+                        x=group_pd.sort_values("date")["date"],
+                        y=smoothed,
+                        name=group_name,
+                        mode="lines",
+                        line=dict(color=brand_colors[idx % len(brand_colors)], width=2.2),
+                    ))
+
+            fig_changes = add_discount_bands(fig_changes)
+            fig_changes.update_layout(
+                **PLOT_LAYOUT,
+                height=360,
+                title=translate("brand_changes_title"),
+                yaxis_title=translate("brand_changes_yaxis"),
+            )
+            st.plotly_chart(fig_changes, width='stretch', config=PLOT_CONFIG)
+
             _, event_start, planned_end = policy_windows[selected_policy]
             brand_rows = calculate_brand_policy_rows(
                 level_df,
@@ -1522,9 +1707,9 @@ with tab_brand:
         else:
             st.info(translate("brand_groups_help"))
 
-# TAB 5: Regional Pricing Analysis
+# TAB 7: Regional Pricing Analysis
 # ──────────────────────────────────────────────────────────────────────────────
-with tab4:
+with tab_location:
     st.markdown(f"#### {translate('location_title')}")
     st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{translate('location_note')}</span>", unsafe_allow_html=True)
 
@@ -1658,3 +1843,16 @@ with tab4:
     else:
         st.info(translate("regional_data_missing"))
 
+
+
+# TAB 4: Tank Advisor (WIP)
+# ──────────────────────────────────────────────────────────────────────────────
+with tab_advisor:
+    st.info(translate("advisor_wip_banner"), icon="🚧")
+    tank_advisor_tab.render_tank_advisor_tab(DATA_DIR, fuel_key, translate)
+
+# TAB 5: RAG — Ask Questions
+# ──────────────────────────────────────────────────────────────────────────────
+with tab_rag:
+    st.markdown(f"#### {translate('rag_title')}")
+    st.info(translate("rag_coming_soon"), icon="💬")

@@ -2,8 +2,24 @@
 # Stop execution on any error
 set -e
 
-# Support overriding the target GCP Project ID via environment variable
-GCP_PROJECT=${GOOGLE_CLOUD_PROJECT:-project-75366ce0-f637-4d56-bcb}
+# Load deployment config from the gitignored .env file in the project root.
+# The .env file is expected to contain:
+#   GOOGLE_CLOUD_PROJECT=your-gcp-project-id
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "$SCRIPT_DIR/.env"
+  set +a
+fi
+
+GCP_PROJECT="${GOOGLE_CLOUD_PROJECT:-}"
+
+if [ -z "$GCP_PROJECT" ]; then
+  echo "ERROR: GOOGLE_CLOUD_PROJECT is not set."
+  echo "Add GOOGLE_CLOUD_PROJECT=your-gcp-project-id to .env or export it as an environment variable."
+  exit 1
+fi
 
 echo "Starting deployment to Google Cloud Run..."
 echo "Project: $GCP_PROJECT"

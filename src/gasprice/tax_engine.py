@@ -38,11 +38,13 @@ class Co2Period:
 
 # Declarative historical tax schedules
 VAT_PERIODS = [
+    VatPeriod(date(2013, 1, 1), date(2020, 6, 30), 0.19),
     VatPeriod(date(2020, 7, 1), date(2020, 12, 31), 0.16)
 ]
 DEFAULT_VAT_RATE = 0.19
 
 ENERGY_TAX_PERIODS = [
+    EnergyTaxPeriod(date(2013, 1, 1), date(2018, 12, 31), 0.6545, 0.4704),
     EnergyTaxPeriod(date(2022, 6, 1), date(2022, 8, 31), 0.3590, 0.3300),
     EnergyTaxPeriod(date(2026, 5, 1), date(2026, 6, 30), 0.5141, 0.3300)
 ]

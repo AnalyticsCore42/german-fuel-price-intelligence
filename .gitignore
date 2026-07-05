@@ -53,4 +53,12 @@ data/**/._*
 .pytest_cache/
 htmlcov/
 
+# Transient pipeline state (can be rebuilt from raw data)
+data/station_carry_forward_state.*
+scripts/exploratory/*.csv
+scripts/exploratory/*.html
+scripts/exploratory/aral_analysis/
 
+
+PROJECT_LINKS.md
+AGENTS.md

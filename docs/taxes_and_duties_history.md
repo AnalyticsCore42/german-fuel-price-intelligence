@@ -1,5 +1,5 @@
 # Documentation: Taxes and Duties on Motor Fuels (Petrol & Diesel) in Germany
-**Status:** May 2026 | **History:** 2019 – 2026 | **Future:** Approved changes from 2027
+**Status:** May 2026 | **History:** 2003 – 2026 | **Future:** Approved changes from 2027
 
 This document contains the exact legal tax rates, duties, and formulas strictly required to calculate the net product margin (refinery/distribution margin). All values are **net values** (before Value Added Tax), as VAT is always applied to the sum of the product price and all duties listed here.
 
@@ -13,7 +13,9 @@ Due to the current fuel discount (*Tankrabatt*, May 1, 2026 – June 30, 2026), 
 *   **Petrol / Gasoline (*Benzin, Super E5/E10*):** 51.41 cents / liter
 *   **Diesel (*Diesel*):** 33.00 cents / liter
 
-**Historical Development (since 2019):**
+**Historical Development:**
+*   **Since 2003/2004 – Standard rate (*Regelsatz*):** Petrol: 65.45 ct/l | Diesel: 47.04 ct/l  
+  *(The current standard rates have been in place since the end of the German “Ökosteuer” reform phase; petrol reached 65.45 ct/l in 2003 and diesel reached 47.04 ct/l in 2004.)*
 *   **01.01.2019 – 31.05.2022:** Standard rate (*Regelsatz*) (Petrol: 65.45 ct/l | Diesel: 47.04 ct/l)
 *   **01.06.2022 – 31.08.2022 (1st Fuel Discount / *1. Tankrabatt*):** Cut to EU minimum (Petrol: 35.90 ct/l | Diesel: 33.00 ct/l)
 *   **01.09.2022 – 30.04.2026:** Standard rate (Petrol: 65.45 ct/l | Diesel: 47.04 ct/l)
@@ -75,6 +77,7 @@ Summary table for mapping duties based on the `Timestamp`. For 2026, the recomme
 
 | Period | Petrol Energy Tax (*EnergieSt.*) | Diesel Energy Tax (*EnergieSt.*) | CO₂ Price (t) | CO₂ Petrol (ct/l) | CO₂ Diesel (ct/l) | VAT (*MwSt.*) | Note / Event |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **2013–2018** | 65.45 ct/l | 47.04 ct/l | 0 € | 0.00 ct/l | 0.00 ct/l | 19 % | Stable rates; no CO₂ pricing |
 | **2019 (Jan-Dec)** | 65.45 ct/l | 47.04 ct/l | 0 € | 0.00 ct/l | 0.00 ct/l | 19 % | - |
 | **2020 (Jan-Jun)** | 65.45 ct/l | 47.04 ct/l | 0 € | 0.00 ct/l | 0.00 ct/l | 19 % | - |
 | **2020 (Jul-Dec)** | 65.45 ct/l | 47.04 ct/l | 0 € | 0.00 ct/l | 0.00 ct/l | 16 % | VAT cut (COVID) |

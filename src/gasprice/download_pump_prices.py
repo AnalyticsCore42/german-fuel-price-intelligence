@@ -236,14 +236,19 @@ def download_stations(session: requests.Session, base_url: str):
     _save_manifest(STATIONS_MANIFEST_FILE, manifest)
     log_success(f"Stations saved: {output_path} ({df.height:,} stations, {output_path.stat().st_size / 1024:.0f} KB)")
 
-def download_prices(session: requests.Session, base_url: str):
+def download_prices(
+    session: requests.Session,
+    base_url: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+):
     """Download daily price files for the configured date range."""
-    current = START_DATE
-    end = END_DATE
+    current = start_date or START_DATE
+    end = end_date or END_DATE
 
     if TEST_MODE:
-        end = min(START_DATE + timedelta(days=2), END_DATE)
-        log_info(f"TEST MODE: downloading only {START_DATE} to {end}")
+        end = min(current + timedelta(days=2), END_DATE)
+        log_info(f"TEST MODE: downloading only {current} to {end}")
 
     total_days = (end - current).days + 1
     downloaded = 0
@@ -262,7 +267,7 @@ def download_prices(session: requests.Session, base_url: str):
         year_dir.mkdir(parents=True, exist_ok=True)
         output_path = year_dir / f"{current.strftime('%Y-%m-%d')}.parquet"
 
-        day_num = (current - START_DATE).days + 1
+        day_num = (current - (start_date or START_DATE)).days + 1
 
         # Skip if already downloaded, content hash is unchanged, and the file
         # was previously marked complete. Always re-verify the last RECENT_DAYS
@@ -359,13 +364,34 @@ def download_prices(session: requests.Session, base_url: str):
 if __name__ == "__main__":
     user, password, base_url = load_env()
 
+    # Optional CLI override for the start/end dates (useful for backfills).
+    start_override = None
+    if "--start-date" in sys.argv:
+        idx = sys.argv.index("--start-date")
+        try:
+            start_override = date.fromisoformat(sys.argv[idx + 1])
+        except (IndexError, ValueError):
+            log_error("Usage: --start-date YYYY-MM-DD")
+            sys.exit(1)
+
+    end_override = None
+    if "--end-date" in sys.argv:
+        idx = sys.argv.index("--end-date")
+        try:
+            end_override = date.fromisoformat(sys.argv[idx + 1])
+        except (IndexError, ValueError):
+            log_error("Usage: --end-date YYYY-MM-DD")
+            sys.exit(1)
+
     session = requests.Session()
     session.auth = (user, password)
     session.headers.update({"User-Agent": "TankAnalysis/1.0"})
 
+    effective_start = start_override or START_DATE
+    effective_end = end_override or END_DATE
     print(f"Tankerkönig Data Downloader")
     print(f"Target: {DATA_DIR}")
-    print(f"Range:  {START_DATE} → {END_DATE}")
+    print(f"Range:  {effective_start} → {effective_end}")
     if TEST_MODE:
         print("Mode:   ⚡ TEST (3 days only)")
     print()
@@ -374,4 +400,4 @@ if __name__ == "__main__":
     download_stations(session, base_url)
 
     print("\n--- Downloading Daily Prices ---")
-    download_prices(session, base_url)
+    download_prices(session, base_url, start_date=start_override, end_date=end_override)
