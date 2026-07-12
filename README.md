@@ -24,7 +24,7 @@ An interactive analytics pipeline and premium dashboard analyzing retail margins
 - `ui/translations/` — Externalized i18n strings for the dashboard (`en.json`, `de.json`).
 - `ui/tank_advisor_tab.py` — Tank Advisor tab implementation.
 - `start_dashboard.py` — Convenience launcher script that automatically overrides headless settings to open the dashboard in your system's browser.
-- `docs/` — Ground-truth documentation including legislative policy timelines, corporate brand ownership trees, RAG strategy details, and the data dictionary.
+- `docs/` — Ground-truth documentation including legislative policy timelines, corporate brand ownership trees, RAG strategy details, the data dictionary, and pipeline architecture.
 - `data/` — Storage folder for aggregated price statistics and macroeconomic baseline Parquet datasets.
 - `tests/` — Unit tests for the pipeline, tax engine, and UI components.
 - `LICENSE` — MIT license for the project code.
