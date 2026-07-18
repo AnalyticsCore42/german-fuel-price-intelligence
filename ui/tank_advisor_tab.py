@@ -208,6 +208,12 @@ def render_tank_advisor_tab(
         )
 
     # ── Compute recommendation ──
+    # The result is persisted in session_state (not just rendered inline under
+    # the button) because st.button() only evaluates True on the exact rerun
+    # where it was clicked. Rendering results directly inside `if st.button():`
+    # made them disappear the moment the user touched any other widget (map,
+    # sliders, inputs) since that triggers a rerun where the button is False
+    # again.
     if st.button(translate("advisor_calculate"), type="primary", use_container_width=True):
         with st.spinner("Calculating… / Berechne…"):
             advisor_df = load_advisor_data_for_datetime(
@@ -216,24 +222,42 @@ def render_tank_advisor_tab(
                 st.session_state["advisor_target_date"],
                 st.session_state["advisor_target_time"],
             )
+            result = None
+            if not advisor_df.is_empty():
+                result = find_best_station(
+                    advisor_df,
+                    st.session_state["advisor_lat"],
+                    st.session_state["advisor_lon"],
+                    fuel_key,
+                    tank_size,
+                    consumption,
+                    radius_km=float(radius),
+                )
 
-            if advisor_df.is_empty():
-                st.error(translate("advisor_no_data_for_date"))
-                return
-
-            result = find_best_station(
-                advisor_df,
-                st.session_state["advisor_lat"],
-                st.session_state["advisor_lon"],
-                fuel_key,
-                tank_size,
-                consumption,
-                radius_km=float(radius),
-            )
-
-        if result["recommended"] is None:
+        if advisor_df.is_empty():
+            st.error(translate("advisor_no_data_for_date"))
+            st.session_state.pop("advisor_result", None)
+        elif result["recommended"] is None:
             st.error(translate("advisor_no_stations"))
-            return
+            st.session_state.pop("advisor_result", None)
+        else:
+            st.session_state["advisor_result"] = {
+                "result": result,
+                "tank_size": tank_size,
+                "consumption": consumption,
+                "km_per_month": st.session_state["advisor_km_per_month"],
+                "user_lat": st.session_state["advisor_lat"],
+                "user_lon": st.session_state["advisor_lon"],
+            }
+
+    if "advisor_result" in st.session_state:
+        stored = st.session_state["advisor_result"]
+        result = stored["result"]
+        tank_size = stored["tank_size"]
+        consumption = stored["consumption"]
+        km_per_month = stored["km_per_month"]
+        user_lat = stored["user_lat"]
+        user_lon = stored["user_lon"]
 
         rec = result["recommended"]
         closest = result["closest"]
@@ -321,7 +345,6 @@ def render_tank_advisor_tab(
         st.markdown(f"#### {translate('advisor_savings_projection')}")
         st.markdown(f"<span style='color:#8892A4;font-size:0.85rem;'>{translate('advisor_savings_projection_note')}</span>", unsafe_allow_html=True)
 
-        km_per_month = st.session_state["advisor_km_per_month"]
         rec_proj = compute_savings_projection(rec["total_cost"], tank_size, km_per_month, consumption)
         closest_proj = compute_savings_projection(closest["total_cost"], tank_size, km_per_month, consumption)
         expensive_proj = compute_savings_projection(expensive["total_cost"], tank_size, km_per_month, consumption)
@@ -359,8 +382,8 @@ def render_tank_advisor_tab(
         # ── Map ──
         from streamlit_folium import st_folium
         folium_map = build_folium_map(
-            st.session_state["advisor_lat"],
-            st.session_state["advisor_lon"],
+            user_lat,
+            user_lon,
             result["all_stations"],
             rec,
             closest,

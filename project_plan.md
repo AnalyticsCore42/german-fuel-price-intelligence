@@ -1,7 +1,9 @@
 Project Plan
-Last updated: 2026-07-05
+Last updated: 2026-07-18
 
 ## Recent Changes
+- Documented **Data & Pipeline Architecture** (`docs/architecture.md`) detailing Parquet vs. RDBMS selection, state carry-forward incremental processing, and geographic station-count weighting design.
+- Ran incremental data pipeline updates extending historical prices through **July 2026**.
 - Added **Tank Advisor** tab (`ui/tank_advisor_tab.py`, `src/gasprice/tank_advisor.py`) with browser geolocation, Nominatim geocoding, Folium map, and driving-cost model.
 - Fixed Tank Advisor **round-trip driving cost bug**: the model now charges fuel for both directions of the detour, preventing absurd far-away recommendations.
 - Switched Tank Advisor to **point-in-time raw prices** from `data/tankerkoenig/prices/{YYYY}/{YYYY-MM-DD}.parquet`: it loads the last observation per station up to the user-selected date/time, filtering out stale/bogus single observations that produced €1.00/L recommendations.
@@ -20,6 +22,7 @@ Last updated: 2026-07-05
 - [x] Document tax constants: `docs/taxes_and_duties_history.md`
 - [x] Document policy timeline: `docs/policy_timeline_tankrabatt.md` (legislative milestone dates for both Tankrabatte)
 - [x] Document brand, group, and ownership ground truth: `docs/market_structure.md`
+- [x] Document pipeline architecture & storage design: `docs/architecture.md`
 - [x] Coding guidelines: `CODING_GUIDELINES.md`
 - [x] Define and maintain this project plan
 

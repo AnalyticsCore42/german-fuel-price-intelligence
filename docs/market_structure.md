@@ -4,8 +4,8 @@ This file includes the working mapping from visible German fuel-station brand na
 
 ## How This File Is Used
 
-- `scripts/01_clean_stations.py` cleans raw station brands to uppercase names and assigns `corporate_group`.
-- `scripts/04_build_dashboard_dataset.py` creates two dashboard comparison levels:
+- `src/gasprice/clean_stations.py` cleans raw station brands to uppercase names and assigns `corporate_group`.
+- `src/gasprice/build_dashboard_dataset.py` creates two dashboard comparison levels:
   - `brand`: visible brand names, with all brands below 50 stations grouped as `Other brands (<50 stations)`.
   - `owner`: corporate ownership groups from `corporate_group`.
 - `ui/04_app.py` uses those two levels in the Brand Comparison tab.

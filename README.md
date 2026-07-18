@@ -39,7 +39,7 @@ Clone the repository and create a fresh virtual environment. **Never commit the 
 ```bash
 # 1. Clone
  git clone <your-repo-url>
- cd 1_Project_German_GasolinePrices21.05
+ cd 3_German_Gasoline_Prices
 
 # 2. Create virtual environment with Python 3.12
 python3.12 -m venv .venv
