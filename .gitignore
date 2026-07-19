@@ -59,6 +59,18 @@ scripts/exploratory/*.csv
 scripts/exploratory/*.html
 scripts/exploratory/aral_analysis/
 
+# Pipeline output aggregates: not tracked on main anymore (regenerated on
+# every pipeline run, which bloated normal git history). Latest version
+# lives on the data-latest branch instead; see scripts/publish_data_snapshot.sh
+# and scripts/fetch_data_snapshot.sh. Files stay on disk locally, just untracked.
+data/processed_brand_daily_margins.parquet
+data/processed_daily_margins.parquet
+data/processed_intraday.parquet
+data/processed_macro_baseline.parquet
+data/processed_refined_product_baseline.parquet
+data/processed_regional_daily_margins.parquet
+data/station_price_stats.parquet
+
 
 Dashboard_Link.pdf
 AGENTS.md

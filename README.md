@@ -25,7 +25,7 @@ An interactive analytics pipeline and premium dashboard analyzing retail margins
 - `ui/tank_advisor_tab.py` — Tank Advisor tab implementation.
 - `start_dashboard.py` — Convenience launcher script that automatically overrides headless settings to open the dashboard in your system's browser.
 - `docs/` — Ground-truth documentation including legislative policy timelines, corporate brand ownership trees, RAG strategy details, the data dictionary, and pipeline architecture.
-- `data/` — Storage folder for aggregated price statistics and macroeconomic baseline Parquet datasets.
+- `data/` — Storage folder for aggregated price statistics and macroeconomic baseline Parquet datasets. The regenerated aggregate outputs (`processed_*.parquet`, `station_price_stats.parquet`) are gitignored on `main` and instead tracked as a single snapshot on the `data-latest` branch — see `scripts/publish_data_snapshot.sh` and `scripts/fetch_data_snapshot.sh`. This keeps `main`'s history from growing every pipeline run while still keeping a git-hosted backup of the latest data. Deployment (`deploy_gcp.sh`) is unaffected since Cloud Run builds from the local working directory, not from a specific git ref.
 - `tests/` — Unit tests for the pipeline, tax engine, and UI components.
 - `LICENSE` — MIT license for the project code.
 
