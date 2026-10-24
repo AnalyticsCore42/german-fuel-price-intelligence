@@ -20,9 +20,11 @@ Due to the current fuel discount (*Tankrabatt*, May 1, 2026 – June 30, 2026), 
 *   **01.06.2022 – 31.08.2022 (1st Fuel Discount / *1. Tankrabatt*):** Cut to EU minimum (Petrol: 35.90 ct/l | Diesel: 33.00 ct/l)
 *   **01.09.2022 – 30.04.2026:** Standard rate (Petrol: 65.45 ct/l | Diesel: 47.04 ct/l)
 *   **01.05.2026 – 30.06.2026 (2nd Fuel Discount / *2. Tankrabatt*):** Petrol: 51.41 ct/l | Diesel: 33.00 ct/l
+*   **01.07.2026 – 30.09.2026:** Standard rate (Petrol: 65.45 ct/l | Diesel: 47.04 ct/l)
+*   **01.10.2026 – 31.12.2026 (3rd Fuel Discount / *3. Tankrabatt*):** Petrol: 51.41 ct/l | Diesel: 33.00 ct/l
 
 **Future (already approved):**
-*   **From 01.07.2026:** Legal return to the standard rate (Petrol: 65.45 ct/l | Diesel: 47.04 ct/l).
+*   **From 01.01.2027:** Legal return to the standard rate (Petrol: 65.45 ct/l | Diesel: 47.04 ct/l).
 
 ---
 
@@ -90,6 +92,8 @@ Summary table for mapping duties based on the `Timestamp`. For 2026, the recomme
 | **2025 (Jan-Dec)** | 65.45 ct/l | 47.04 ct/l | 55 € | 13.09 ct/l | 14.58 ct/l | 19 % | BEHG increase |
 | **2026 (Jan-Apr)** | 65.45 ct/l | 47.04 ct/l | 65 €* | 15.47 ct/l | 17.23 ct/l | 19 % | Auction corridor starts (*Scen. B) |
 | **2026 (May-Jun)** | 51.41 ct/l | 33.00 ct/l | 65 €* | 15.47 ct/l | 17.23 ct/l | 19 % | 2nd Fuel Discount (*2. Tankrabatt*) |
-| **from Jul 2026** | 65.45 ct/l | 47.04 ct/l | 65 €* | 15.47 ct/l | 17.23 ct/l | 19 % | Return to standard rate |
+| **2026 (Jul-Sep)** | 65.45 ct/l | 47.04 ct/l | 65 €* | 15.47 ct/l | 17.23 ct/l | 19 % | Return to standard rate |
+| **2026 (Oct-Dec)** | 51.41 ct/l | 33.00 ct/l | 65 €* | 15.47 ct/l | 17.23 ct/l | 19 % | 3rd Fuel Discount (*3. Tankrabatt*) |
+| **from Jan 2027** | 65.45 ct/l | 47.04 ct/l | 65 €* | 15.47 ct/l | 17.23 ct/l | 19 % | Return to standard rate |
 
 *(Note for calculating total duties: The EBV contribution / EBV-Beitrag of 0.27 ct/l for petrol and 0.30 ct/l for diesel must be added consistently across all rows.)*

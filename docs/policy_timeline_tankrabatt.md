@@ -59,11 +59,10 @@ delayed or opportunistic pass-through.
 | Fuel    | Standard Energy Tax | Reduced Rate (May–Jun 2026) | Reduction  | incl. 19% VAT |
 |---------|--------------------|-----------------------------|------------|---------------|
 | Petrol  | €0.6545 / L        | €0.5141 / L                 | −€0.1404/L | −**€0.1671/L** |
-| Diesel  | €0.4704 / L        | €0.4704 / L                 | **€0.00/L**| **€0.00/L**   |
+| Diesel  | €0.4704 / L        | €0.3300 / L                 | −€0.1404/L | −**€0.1671/L** |
 
-> **Note on Diesel (Tankrabatt 2):** The 2026 discount did NOT reduce the diesel energy tax rate.
-> Diesel stations benefited only indirectly via the concurrent CO₂ pricing adjustment.
-> This is a key differentiator from 2022.
+> **Note on Diesel (Tankrabatt 2):** Both fuels were cut by the same absolute amount (14.04 ct/L net),
+> consistent with `src/gasprice/tax_engine.py` and `docs/taxes_and_duties_history.md`.
 
 **Anticipation window analysis:**
 - Day −16 (Apr 15): First concrete public announcement with May 1 start date confirmed.
@@ -75,15 +74,52 @@ and theoretically reducing the opportunity for pre-emptive price compression.
 
 ---
 
+## Tankrabatt 3 — Q4 2026 (Kabinett Merz / CDU/CSU–SPD Koalition)
+
+**Trigger:** Renewed high fuel prices due to the ongoing Middle East (Iran) war.
+**Initiator:** Federal government (BMF, Lars Klingbeil) after a federal–state agreement.
+**Legal vehicle:** Inserted as an amendment (*Änderungsantrag*) into the insurance supervision
+bill (VSAAG) rather than passed as a standalone law. Re-activates the Tankrabatt 2 rates essentially unchanged.
+
+| Date           | Phase         | Event                                                                                               |
+|----------------|---------------|-----------------------------------------------------------------------------------------------------|
+| Sep 18, 2026   | Official Ann. | Federal government and states (Bund-Länder) agree to cut the energy tax on petrol and diesel again for Oct 1 – Dec 31, 2026. |
+| Sep 25, 2026   | Parliamentary | Bundestag passes the amendment (roll-call vote: 434 yes, 128 no). Bundesrat approves the same day. **Legal certainty.** |
+| ~Sep 28, 2026  | Signed        | Federal President Frank-Walter Steinmeier signs the law.                                            |
+| **Oct 1, 2026**  | **Effective** | **Law takes effect. Energy tax cut begins.**                                                       |
+| **Dec 31, 2026** | **Expiry**   | **Last day of the tax discount.**                                                                  |
+| Jan 1, 2027    | Restoration   | Energy tax restored to standard rates (planned).                                                    |
+
+### Tax Changes (Tankrabatt 3)
+
+| Fuel    | Standard Energy Tax | Reduced Rate (Oct–Dec 2026) | Reduction  | incl. 19% VAT |
+|---------|--------------------|-----------------------------|------------|---------------|
+| Petrol  | €0.6545 / L        | €0.5141 / L                 | −€0.1404/L | −**€0.1671/L** |
+| Diesel  | €0.4704 / L        | €0.3300 / L                 | −€0.1404/L | −**€0.1671/L** |
+
+**Fiscal cost:** ~€2.34–2.5 bn (BMF: €2.34 bn revenue loss; other sources: ~€2.5 bn).
+**Pass-through monitoring:** The mineral oil industry committed to passing on the cut from day one;
+compliance is observable via the real-time price reports to the Markttransparenzstelle für Kraftstoffe (MTS-K).
+
+**Anticipation window analysis:**
+- Day −13 (Sep 18): Bund-Länder agreement, start date and magnitude known.
+- Day −6  (Sep 25): Bundestag + Bundesrat vote. **Legal certainty.**
+- Day 0   (Oct 1):  Effective date.
+
+Note that the Tankrabatt 3 start (Oct 1) falls only 3 months after the Tankrabatt 2 expiry (Jul 1),
+so the pre-event baseline window overlaps the Tankrabatt 2 period and its aftermath.
+
+---
+
 ## Comparison of Policy Timelines
 
-| Metric                       | Tankrabatt 1 (2022)   | Tankrabatt 2 (2026)   |
-|------------------------------|-----------------------|-----------------------|
-| First public signal → Effective date | ~79 days   | ~16 days              |
-| Legal certainty → Effective date     | 13 days    | 7 days                |
-| Duration                             | 3 months   | 2 months              |
-| Petrol relief (incl. VAT)            | −35.16 ct/L | −16.71 ct/L          |
-| Diesel relief (incl. VAT)            | −16.71 ct/L | **~0 ct/L**           |
+| Metric                       | Tankrabatt 1 (2022)   | Tankrabatt 2 (2026)   | Tankrabatt 3 (Q4 2026) |
+|------------------------------|-----------------------|-----------------------|------------------------|
+| First public signal → Effective date | ~79 days   | ~16 days              | ~13 days               |
+| Legal certainty → Effective date     | 13 days    | 7 days                | 6 days                 |
+| Duration                             | 3 months   | 2 months              | 3 months               |
+| Petrol relief (incl. VAT)            | −35.16 ct/L | −16.71 ct/L          | −16.71 ct/L            |
+| Diesel relief (incl. VAT)            | −16.71 ct/L | −16.71 ct/L          | −16.71 ct/L            |
 
 ---
 
@@ -102,5 +138,5 @@ and theoretically reducing the opportunity for pre-emptive price compression.
 
 ---
 
-*Last updated: 2026-05-20*
+*Last updated: 2026-10-24*
 *Source: Bundestag Drucksachen, BMF press releases, official government communications.*

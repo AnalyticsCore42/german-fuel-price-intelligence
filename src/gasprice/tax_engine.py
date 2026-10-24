@@ -46,7 +46,8 @@ DEFAULT_VAT_RATE = 0.19
 ENERGY_TAX_PERIODS = [
     EnergyTaxPeriod(date(2013, 1, 1), date(2018, 12, 31), 0.6545, 0.4704),
     EnergyTaxPeriod(date(2022, 6, 1), date(2022, 8, 31), 0.3590, 0.3300),
-    EnergyTaxPeriod(date(2026, 5, 1), date(2026, 6, 30), 0.5141, 0.3300)
+    EnergyTaxPeriod(date(2026, 5, 1), date(2026, 6, 30), 0.5141, 0.3300),
+    EnergyTaxPeriod(date(2026, 10, 1), date(2026, 12, 31), 0.5141, 0.3300)
 ]
 DEFAULT_PETROL_ENERGY_TAX = 0.6545
 DEFAULT_DIESEL_ENERGY_TAX = 0.4704

@@ -14,6 +14,9 @@ FILES=(
   data/processed_refined_product_baseline.parquet
   data/processed_regional_daily_margins.parquet
   data/station_price_stats.parquet
+  data/dashboard/compliance_daily_trend.parquet
+  data/dashboard/compliance_lateness_distribution.parquet
+  data/dashboard/compliance_station_rankings.parquet
 )
 
 for f in "${FILES[@]}"; do
@@ -22,6 +25,10 @@ for f in "${FILES[@]}"; do
     exit 1
   fi
 done
+
+echo "==> Verifying dashboard and pipeline integrity with pytest..."
+.venv/bin/python -m pytest tests/ -q
+
 
 INDEX_FILE=$(mktemp -u)
 export GIT_INDEX_FILE="$INDEX_FILE"

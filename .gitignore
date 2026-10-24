@@ -70,6 +70,7 @@ data/processed_macro_baseline.parquet
 data/processed_refined_product_baseline.parquet
 data/processed_regional_daily_margins.parquet
 data/station_price_stats.parquet
+data/dashboard/*.parquet
 
 
 Dashboard_Link.pdf

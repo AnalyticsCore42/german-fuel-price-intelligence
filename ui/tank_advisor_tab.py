@@ -71,7 +71,7 @@ def render_tank_advisor_tab(
         # Browser geolocation: use streamlit-js-eval component only after the
         # user explicitly clicks the button. This avoids permission prompts on
         # every page load and works inside Streamlit's component iframe.
-        if st.button(translate("advisor_use_location"), use_container_width=True):
+        if st.button(translate("advisor_use_location"), width="stretch"):
             st.session_state["advisor_request_location"] = True
 
         if st.session_state.get("advisor_request_location") is True:
@@ -118,7 +118,7 @@ def render_tank_advisor_tab(
 
         c_clear = st.columns([1])[0]
         with c_clear:
-            if st.button(translate("advisor_clear_suggestions"), use_container_width=True):
+            if st.button(translate("advisor_clear_suggestions"), width="stretch"):
                 st.session_state["advisor_suggestions"] = []
                 st.session_state["advisor_last_query"] = st.session_state.get("advisor_address", "")
 
@@ -144,7 +144,6 @@ def render_tank_advisor_tab(
         with c_lat:
             st.number_input(
                 "Lat",
-                value=st.session_state["advisor_lat"],
                 format="%.6f",
                 label_visibility="collapsed",
                 key="advisor_lat",
@@ -152,7 +151,6 @@ def render_tank_advisor_tab(
         with c_lon:
             st.number_input(
                 "Lon",
-                value=st.session_state["advisor_lon"],
                 format="%.6f",
                 label_visibility="collapsed",
                 key="advisor_lon",
@@ -164,7 +162,6 @@ def render_tank_advisor_tab(
         with c_date:
             st.date_input(
                 translate("advisor_date"),
-                value=st.session_state["advisor_target_date"],
                 min_value=available_dates[0],
                 max_value=available_dates[-1],
                 key="advisor_target_date",
@@ -172,7 +169,6 @@ def render_tank_advisor_tab(
         with c_time:
             st.time_input(
                 translate("advisor_time"),
-                value=st.session_state["advisor_target_time"],
                 key="advisor_target_time",
             )
 
@@ -202,7 +198,6 @@ def render_tank_advisor_tab(
             translate("advisor_km_per_month"),
             min_value=1.0,
             max_value=10000.0,
-            value=st.session_state["advisor_km_per_month"],
             step=100.0,
             key="advisor_km_per_month",
         )
@@ -214,7 +209,7 @@ def render_tank_advisor_tab(
     # made them disappear the moment the user touched any other widget (map,
     # sliders, inputs) since that triggers a rerun where the button is False
     # again.
-    if st.button(translate("advisor_calculate"), type="primary", use_container_width=True):
+    if st.button(translate("advisor_calculate"), type="primary", width="stretch"):
         with st.spinner("Calculating… / Berechne…"):
             advisor_df = load_advisor_data_for_datetime(
                 prices_dir,
@@ -416,4 +411,4 @@ def render_tank_advisor_tab(
         top["road_distance_km"] = top["road_distance_km"].apply(lambda x: f"{x:.1f} km")
         top["driving_cost"] = top["driving_cost"].apply(lambda x: f"€{x:.2f}")
         top["total_cost"] = top["total_cost"].apply(lambda x: f"€{x:.2f}")
-        st.dataframe(top, hide_index=True, use_container_width=True)
+        st.dataframe(top, hide_index=True, width="stretch")

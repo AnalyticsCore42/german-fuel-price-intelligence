@@ -475,6 +475,32 @@ def add_tax_and_spread_columns(df_daily: pl.DataFrame) -> pl.DataFrame:
 
     return df_joined.drop_nulls(subset=["price_e5", "Raw_Material_EUR_per_Liter"])
 
+# Columns written by add_tax_and_spread_columns (everything else in the outputs is raw price data).
+DERIVED_COLUMNS = (
+    r"^(Raw_Material_EUR_per_Liter|brent_eur_liter"
+    r"|(e5|e10|diesel)_(vat|ebv|co2|energy|net_price|product_eur_liter)"
+    r"|(margin|retail_margin|refining_spread)_(e5|e10|diesel))$"
+)
+
+
+def refresh_tax_and_spread_columns() -> None:
+    """Recompute tax and spread columns over the full history of the daily outputs.
+
+    Incremental runs derive these columns only for newly processed days, so changes to the tax
+    engine or the refined product baseline would otherwise never reach historical rows.
+    """
+    for path in (DAILY_OUTPUT_FILE, BRAND_DAILY_OUTPUT_FILE, REGIONAL_DAILY_OUTPUT_FILE):
+        if not path.exists():
+            continue
+        df = pl.read_parquet(path)
+        refreshed = add_tax_and_spread_columns(df.select(pl.exclude(DERIVED_COLUMNS)))
+        if refreshed.height != df.height:
+            print(f"  ⚠ {path.name}: row count changed ({df.height:,} -> {refreshed.height:,}), left unchanged")
+            continue
+        refreshed.select([c for c in df.columns if c in refreshed.columns]).write_parquet(path, compression="zstd")
+        print(f"  Refreshed {path.name} ({refreshed.height:,} rows)")
+
+
 def _get_rss_mb() -> float:
     try:
         import psutil

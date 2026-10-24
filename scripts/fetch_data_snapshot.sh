@@ -24,10 +24,13 @@ FILES=(
   data/processed_refined_product_baseline.parquet
   data/processed_regional_daily_margins.parquet
   data/station_price_stats.parquet
+  data/dashboard/compliance_daily_trend.parquet
+  data/dashboard/compliance_lateness_distribution.parquet
+  data/dashboard/compliance_station_rankings.parquet
 )
 
-mkdir -p data
 for f in "${FILES[@]}"; do
+  mkdir -p "$(dirname "$f")"
   git show "$REF:$f" > "$f"
   echo "Restored $f from $REF"
 done

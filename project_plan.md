@@ -1,9 +1,79 @@
 Project Plan
-Last updated: 2026-07-18
+Last updated: 2026-09-19
+
+## Status & Plan for Today (2026-09-19)
+
+### ✅ Done Today
+1. **12-Uhr-Regel Compliance & "Name & Shame" Audit (`tab_compliance`):**
+   - Built empirical audit of the statutory single 12:00 price hike rule (KPAnG).
+   - Conservative classification with a 13:00 buffer (11:55–13:00) to account for data transmission delays vs. deliberate multi-hike violators (stations that already hiked at 12:00 and hiked again later).
+   - Refuted the drift hypothesis: Offender share did NOT rise over time (no erosion of compliance), but fell from 31.4% in April to 21.6% in September (-31.2% decline).
+   - Built full Streamlit audit tab with 3 KPI cards, daily drift bar chart + 7d trend, brand violation comparison, 2-digit PLZ Leitbereich ranking, filterable station table, and transparency disclaimer (*).
+   - Precomputed datasets: `data/dashboard/compliance_daily_trend.parquet` and `data/dashboard/compliance_station_rankings.parquet`.
+
+2. **Top Discount KPI Cards Mathematical Reconciliation & Validation Checks (`ui/04_app.py`):**
+   - Enforced strict economic identity: $\text{Steuersenkung} = \text{Weitergegeben} + \text{Einbehalten (Kosten \& Marge)}$.
+   - Guaranteed numbers strictly add up to 100% of the tax cut across all fuels and periods.
+   - Fixed the Diesel 2026 distortion (previously 164% due to post-Iran war crude collapse): Isolated pure tax transmission via the immediate 14-day event window around May 1, 2026 (yielding 84% pass-through, 13.7 ct/L passed, +2.5 ct/L retained).
+   - Added automated anomaly detection and validation checks: If raw pump drop exceeds statutory tax cut due to concurrent crude collapse, an alert notice is displayed detailing the unadjusted vs. adjusted transmission.
+   - Added automated pytest suite: `test_discount_kpi_cards_mathematical_reconciliation_and_validation` verifying $0\% \le \text{pass\_pct} \le 100\%$, non-negative retention, and strict mathematical reconciliation (<0.05 ct tolerance).
+   - Synced German and English translation keys (`discount_margin_absorbed_label`, `discount_validation_warning`, `discount_validation_error`, `discount_adjusted_baseline_subtitle`).
+
+3. **Default Timeframe in Tab 3 (Tagesrhythmus):**
+   - Changed default timeframe from `all_time` to `last_30` (Letzte 30 Tage) so users immediately see current intraday rhythm.
+
+4. **Mobile Responsiveness Optimization:**
+   - Added responsive `@media (max-width: 768px)` stylesheet.
+   - Mobile canvas padding tightened to `0.6rem` sides / `1.25rem` top to prevent wasted vertical screen space.
+   - Smooth horizontal touch-scrollable tabs bar (`overflow-x: auto; flex-wrap: nowrap;`).
+   - Mobile card scaling: Hero numbers scaled to `1.65rem` and paddings tightened for clean vertical stacking.
+   - Dynamic chart resizing via `PLOT_CONFIG = {'displayModeBar': False, 'responsive': True}` across all 14 Plotly charts.
+   - Responsive sidebar with `85vw` max width on small phones (e.g. iPhone SE).
+
+5. **Tab Reordering & WIP Grouping:**
+   - Promoted **12-Uhr-Regel Audit** to prominent Tab 2 position (right after Brent vs. Pump).
+   - Moved experimental/in-progress features (**Tankberater** and **RAG**) to the very end of the tab bar with explicit `(in Arbeit)` / `(WIP)` designations.
+
+6. **Granular Economic Price Decomposition Engine (`src/gasprice/price_decomposition.py`):**
+   - Built mathematical decomposition engine breaking down gross pump prices into all 13 industrial and regulatory layers (Crude FOB, Crude Freight & Pipeline, Crack Spread, Tanklager & TKW Secondary Logistics, Dealer Commission, Payment Interchange Card Fees, Brand Net Profit, Energy Tax, CO2, EBV, VAT).
+   - Mathematical reconciliation verified: sum of all components strictly equals gross pump price (<0.001 € tolerance).
+   - Integrated into `ui/04_app.py` behind the scenes while keeping the outer visual display of the Price Tower 100% identical as requested.
+
+7. **Tankberater Tab Deactivation & Lockdown:**
+   - Disabled and grayed out the Tankberater tab (`pointer-events: none; opacity: 0.35; filter: grayscale(1); cursor: not-allowed`).
+   - Labeled with `🔒 Tankberater (deaktiviert)` / `🔒 Tank Advisor (Disabled)`.
+   - Disabled all child inputs, map, and sliders so nothing can be clicked or interacted with.
+
+8. **Test Suite & Verification:**
+   - All 86 pytest unit tests pass cleanly (`86 passed in 1.82s`).
+   - Fully synced German (`de.json`) and English (`en.json`) translations.
+
+---
+
+### ⏳ Planned / What's Left for Today & Next
+
+1. **Spam-sichere Suggestion- & Feedback-Box:**
+   - Honeypot-Feld (unsichtbares Input-Feld, das Bots entlarvt).
+   - Rate-Limiting (max. 1 Nachricht alle 5 Min. pro Session/IP).
+   - Speicherung in lokaler SQLite/Parquet-Datei oder Weiterleitung via Discord/Telegram-Webhook (schützt private E-Mail vor Spam).
+
+2. **Raffinerie- & Frachtkosten-Dekomposition:**
+   - Großhandel/Crack-Spread im oberen Preisaufbau-Turm optional als eigene Schicht visualisieren.
+   - Binnenschiff-Frachtkosten / Pegel Kaub Anbindung (Pegelonline API) zur Modellierung von Kleinwasserzuschlägen (KWZ) für Transporte nach Süddeutschland.
+
+3. **Spatial Brand Analysis (Local Pricing Radius / Umkreisanalyse):**
+   - Lokale Preisaufschläge relativ zu den nächsten 10–30 Nachbarstationen (z. B. 10 km Umkreis Niestetal / Kassel) zur Bereinigung von Autobahn- vs. Landstationen.
+
+4. **Final Review:**
+   - Überprüfung aller UI-Elemente und Metriken auf Konsistenz.
+
+---
 
 ## Recent Changes
+- Added **Tankrabatt 2 End (Jul 2026)** to the Event Study analysis (`ui/04_app.py`, translations), including legislative milestones, symmetric event study trajectories, auto-generated tax hike verdict, and unit tests.
+- Added **Crude Oil Unit Display** selector to the dashboard sidebar, allowing users to toggle Brent crude prices between €/L, $/barrel (USD global benchmark), €/barrel (EUR European market), or both, with dynamic updates to KPI cards and chart hover tooltips.
+- Ran incremental data pipeline updates extending historical fuel prices and macroeconomic/futures baselines through **September 2026**.
 - Documented **Data & Pipeline Architecture** (`docs/architecture.md`) detailing Parquet vs. RDBMS selection, state carry-forward incremental processing, and geographic station-count weighting design.
-- Ran incremental data pipeline updates extending historical prices through **July 2026**.
 - Added **Tank Advisor** tab (`ui/tank_advisor_tab.py`, `src/gasprice/tank_advisor.py`) with browser geolocation, Nominatim geocoding, Folium map, and driving-cost model.
 - Fixed Tank Advisor **round-trip driving cost bug**: the model now charges fuel for both directions of the detour, preventing absurd far-away recommendations.
 - Switched Tank Advisor to **point-in-time raw prices** from `data/tankerkoenig/prices/{YYYY}/{YYYY-MM-DD}.parquet`: it loads the last observation per station up to the user-selected date/time, filtering out stale/bogus single observations that produced €1.00/L recommendations.
@@ -84,3 +154,12 @@ Config: `pytest.ini` + `.coveragerc` (omits IO-only scripts and validation scrip
 4. **Code Quality** — add tests for `build_dashboard_dataset.py` and `download_pump_prices.py`; consider splitting very large modules (`build_dashboard_dataset.py`, `ui/04_app.py`) into smaller files.
 5. **Deployment** — keep Cloud Run deployment up to date (`docs/gcp_deployment.md`).
 6. **GitHub Repo Link** — add a source-code link to the dashboard footer and/or the local `PROJECT_LINKS.md` file once the repo visibility (public/private) is decided.
+
+---
+
+## Idea Backlog (Parked / Exploratory)
+
+- **B2B Fuel Pricing Engine / Station Copilot (Parked):**
+  - *Concept:* Build a real-time competitor tracking and dynamic pricing recommendation engine for independent / Mittelstand fuel stations, exploiting MTS-K low-latency feeds and enforcing mathematically zero § 3 KPAnG violations.
+  - *Assessment (Unrealistic for now):* Requires official Bundeskartellamt MTS-K licensing (Tankerkönig free consumer API blocks commercial use), complex physical POS/pump hardware integration (IFSF protocol), and high sales friction convincing station owners without existing petroleum industry network. Parked to focus on consumer-facing and analytics-first ideas.
+
