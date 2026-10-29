@@ -14,6 +14,7 @@ import logging
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 # ==========================================
 # 1. SETUP & CONFIGURATION
@@ -66,23 +67,25 @@ def fetch_yahoo_data(ticker, start_date, end_date):
         raise e
         
     try:
-        result = res['chart']['result'][0]
-        timestamps = result['timestamp']
-        closes = result['indicators']['quote'][0]['close']
-        
-        dates = [datetime.fromtimestamp(ts).date() for ts in timestamps]
-        valid_data = [(d, c) for d, c in zip(dates, closes) if c is not None]
-        if not valid_data:
-            return pl.DataFrame(schema={"date": pl.Date, "value": pl.Float64})
-            
-        valid_dates, valid_closes = zip(*valid_data)
-        return pl.DataFrame({
-            "date": list(valid_dates),
-            "value": list(valid_closes)
-        })
+        return parse_daily_bars(res['chart']['result'][0])
     except (KeyError, TypeError, IndexError, json.JSONDecodeError) as e:
         logger.error(f"Malformed response format from Yahoo Finance for ticker {ticker}: {e}")
         raise e
+
+def parse_daily_bars(result, now=None):
+    """
+    Daily (date, close, partial) rows from a Yahoo chart result, dated in the exchange time zone.
+    partial = the session has not ended yet (bar dated today or later in exchange time): its close is the
+    last trade so far, and after the evening reopen (Sunday included) it already holds next-session trades.
+    """
+    tz = ZoneInfo(result['meta'].get('exchangeTimezoneName') or "UTC")
+    today = (now or datetime.now(tz)).astimezone(tz).date()
+    closes = result['indicators']['quote'][0]['close']
+    rows = [(datetime.fromtimestamp(ts, tz).date(), c) for ts, c in zip(result['timestamp'], closes) if c is not None]
+    if not rows:
+        return pl.DataFrame(schema={"date": pl.Date, "value": pl.Float64, "partial": pl.Boolean})
+    dates, values = zip(*rows)
+    return pl.DataFrame({"date": list(dates), "value": list(values), "partial": [d >= today for d in dates]})
 
 def update_macro_data():
     if not os.path.exists(PARQUET_FILE):
@@ -104,8 +107,8 @@ def update_macro_data():
     logger.info(f"Fetching updates from Yahoo Finance: {start_str} to {end_str}...")
     
     # Fetch data directly from Yahoo Finance JSON API
-    brent_new = fetch_yahoo_data("BZ=F", start_fetch_date, end_fetch_date).rename({"value": "DCOILBRENTEU"})
-    eurusd_new = fetch_yahoo_data("EURUSD=X", start_fetch_date, end_fetch_date).rename({"value": "DEXUSEU"})
+    brent_new = fetch_yahoo_data("BZ=F", start_fetch_date, end_fetch_date).rename({"value": "DCOILBRENTEU", "partial": "_partial_brent"})
+    eurusd_new = fetch_yahoo_data("EURUSD=X", start_fetch_date, end_fetch_date).rename({"value": "DEXUSEU", "partial": "_partial_fx"})
     
     if brent_new.is_empty() or eurusd_new.is_empty():
         logger.info("No new trading data available from Yahoo Finance yet. Markets might have been closed.")
@@ -119,11 +122,16 @@ def update_macro_data():
     new_merged_df = calendar_df.join(brent_new, on="date", how="left")
     new_merged_df = new_merged_df.join(eurusd_new, on="date", how="left")
     
-    # Forward-fill missing weekend values
+    # Forward-fill missing weekend values (a day filled from a partial session stays partial)
     new_merged_df = new_merged_df.with_columns([
         pl.col("DCOILBRENTEU").forward_fill(),
-        pl.col("DEXUSEU").forward_fill()
+        pl.col("DEXUSEU").forward_fill(),
+        pl.col("_partial_brent").forward_fill(),
+        pl.col("_partial_fx").forward_fill(),
     ])
+    new_merged_df = new_merged_df.with_columns(
+        (pl.col("_partial_brent").fill_null(False) | pl.col("_partial_fx").fill_null(False)).alias("partial_day")
+    ).drop("_partial_brent", "_partial_fx")
     
     # Fill remaining nulls at the start using the previous valid values from the baseline
     for col in ["DCOILBRENTEU", "DEXUSEU"]:
@@ -149,9 +157,17 @@ def update_macro_data():
     baseline_df = baseline_df.filter(pl.col("date") < start_fetch_date)
     
     # Append to baseline and ensure no duplicate dates (defensive guard)
-    updated_baseline_df = pl.concat([baseline_df, new_merged_df]).sort("date").unique("date", keep="last")
+    # diagonal: baselines written before partial_day existed lack the column
+    updated_baseline_df = (
+        pl.concat([baseline_df, new_merged_df], how="diagonal")
+        .with_columns(pl.col("partial_day").fill_null(False))
+        .sort("date").unique("date", keep="last")
+    )
     updated_baseline_df.write_parquet(PARQUET_FILE)
-    
+
+    partial_days = new_merged_df.filter(pl.col("partial_day"))["date"].to_list()
+    if partial_days:
+        logger.info(f"Partial day (session still open, value not final): {partial_days}")
     logger.info(f"Successfully appended/updated {new_merged_df.height} days in the baseline.")
     logger.info(f"The baseline is now fully updated up to {updated_baseline_df['date'].max()}.")
 

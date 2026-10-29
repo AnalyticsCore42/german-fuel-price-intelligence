@@ -6,14 +6,12 @@ Description: Fetches full historical data (from 2005 to present) for Brent crude
              blended wholesale product costs.
 """
 
-import requests
 import polars as pl
-from requests.exceptions import RequestException
-import time
 import logging
-import json
 from datetime import datetime
 from pathlib import Path
+
+from gasprice.update_brent_crude import fetch_yahoo_data
 
 # Setup paths and logger
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -38,59 +36,6 @@ AUTUMN_TRANSITION = ((10, 1), (11, 15))
 # so retailer pass-through cannot explain it) only about half of the US autumn drop is a German cost change.
 SPRING_JUMP_SHARE = 1.0
 AUTUMN_JUMP_SHARE = 0.5
-
-def fetch_with_retry(url, headers, max_retries=3, backoff_factor=2):
-    """
-    Perform requests.get with timeout and exponential backoff retry.
-    Propagates request exceptions after exhaustion.
-    """
-    for attempt in range(1, max_retries + 1):
-        try:
-            logger.info(f"Fetching URL (attempt {attempt}/{max_retries}): {url}")
-            res = requests.get(url, headers=headers, timeout=15)
-            res.raise_for_status()
-            return res.json()
-        except RequestException as e:
-            logger.warning(f"Transient network error on attempt {attempt}: {e}")
-            if attempt == max_retries:
-                logger.error(f"Failed to fetch {url} after {max_retries} attempts.")
-                raise e
-            time.sleep(backoff_factor ** attempt)
-
-def fetch_yahoo_data(ticker, start_date, end_date):
-    """
-    Fetch historical daily data for a given ticker from Yahoo Finance.
-    """
-    start_ts = int(datetime.combine(start_date, datetime.min.time()).timestamp())
-    end_ts = int(datetime.combine(end_date, datetime.min.time()).timestamp())
-    
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?period1={start_ts}&period2={end_ts}&interval=1d"
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    
-    try:
-        res = fetch_with_retry(url, headers=headers)
-    except RequestException as e:
-        logger.error(f"Network failure fetching {ticker}: {e}")
-        raise e
-        
-    try:
-        result = res['chart']['result'][0]
-        timestamps = result['timestamp']
-        closes = result['indicators']['quote'][0]['close']
-        
-        dates = [datetime.fromtimestamp(ts).date() for ts in timestamps]
-        valid_data = [(d, c) for d, c in zip(dates, closes) if c is not None]
-        if not valid_data:
-            return pl.DataFrame(schema={"date": pl.Date, "value": pl.Float64})
-            
-        valid_dates, valid_closes = zip(*valid_data)
-        return pl.DataFrame({
-            "date": list(valid_dates),
-            "value": list(valid_closes)
-        })
-    except (KeyError, TypeError, IndexError, json.JSONDecodeError) as e:
-        logger.error(f"Malformed response format from Yahoo Finance for ticker {ticker}: {e}")
-        raise e
 
 def _transition_weight(roll_col: str, start: tuple[int, int], end: tuple[int, int]) -> pl.Expr:
     """Share of the grade jump still to be offset: 0 before the roll, 1 until the German
@@ -165,19 +110,19 @@ def build_refined_product_baseline():
     
     # Fetch all tickers
     logger.info("Fetching Brent crude (BZ=F)...")
-    brent = fetch_yahoo_data("BZ=F", start_date, end_date).rename({"value": "brent_usd_barrel"})
+    brent = fetch_yahoo_data("BZ=F", start_date, end_date).drop("partial").rename({"value": "brent_usd_barrel"})
     
     logger.info("Fetching RBOB gasoline (RB=F)...")
-    rbob = fetch_yahoo_data("RB=F", start_date, end_date).rename({"value": "rbob_usd_gallon"})
+    rbob = fetch_yahoo_data("RB=F", start_date, end_date).drop("partial").rename({"value": "rbob_usd_gallon"})
     
     logger.info("Fetching Heating oil (HO=F)...")
-    ho = fetch_yahoo_data("HO=F", start_date, end_date).rename({"value": "ho_usd_gallon"})
+    ho = fetch_yahoo_data("HO=F", start_date, end_date).drop("partial").rename({"value": "ho_usd_gallon"})
     
     logger.info("Fetching CBOT Ethanol (EH=F)...")
-    ethanol = fetch_yahoo_data("EH=F", start_date, end_date).rename({"value": "ethanol_usd_gallon"})
+    ethanol = fetch_yahoo_data("EH=F", start_date, end_date).drop("partial").rename({"value": "ethanol_usd_gallon"})
     
     logger.info("Fetching EUR/USD rate (EURUSD=X)...")
-    eurusd = fetch_yahoo_data("EURUSD=X", start_date, end_date).rename({"value": "eur_usd"})
+    eurusd = fetch_yahoo_data("EURUSD=X", start_date, end_date).drop("partial").rename({"value": "eur_usd"})
     
     # Create master calendar date range
     logger.info("Merging and aligning calendar timelines...")
