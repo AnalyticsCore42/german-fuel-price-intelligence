@@ -623,3 +623,21 @@ def test_all_compliance_view_modes_and_clock_chart_render_without_error():
 
 
 
+
+
+def test_discount_card_uses_eu_did_estimate_and_falls_back_to_raw(monkeypatch):
+    """The tile shows the EU Oil Bulletin DiD estimate when one exists, clipped to 0-100% and reconciled;
+    without one it keeps the raw pump-change KPI."""
+    import importlib
+    app = importlib.import_module("ui.04_app")
+    raw = {"tax_drop_ct": 15.0, "passed_ct": 15.0, "retained_ct": 0.0, "pass_pct": 100.0, "is_anomaly": True}
+    row = {"pass_through_pct": 112.0, "statutory_ct": 16.7076, "controls": "FI FR"}
+    monkeypatch.setattr(app, "load_did_pass_through", lambda: {("TR3", app.fuel_key): row})
+
+    kpi = app._apply_did_estimate(raw, "TR3")
+    assert kpi["pass_pct"] == 100.0 and kpi["absorb_bar"] == 0.0
+    assert abs(kpi["passed_ct"] + kpi["retained_ct"] - kpi["tax_drop_ct"]) < 1e-9
+    assert kpi["is_anomaly"] is False and kpi["did_controls"] == "FI FR"
+
+    assert app._apply_did_estimate(raw, "TR1") is raw
+    assert app._apply_did_estimate(None, "TR3") is None

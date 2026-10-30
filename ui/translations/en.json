@@ -45,6 +45,7 @@
     "discount_1_period": "01/06 – 31/08/2022",
     "discount_2_period": "01/05 – 30/06/2026",
     "discount_baseline_concrete": "Baseline: {start} – {end} ({days}-day pre-period)",
+    "discount_baseline_did": "Method: Germany vs. euro-area countries without a tax change ({controls}), net of tax, 2 weeks before vs. first 2 weeks in force (EU Weekly Oil Bulletin)",
     "discount_baseline_concrete_pre_event": "Baseline: {start} – {end} ({days}-day pre-event window)",
     "discount_validation_warning": "⚠️ Validation Alert: Raw unadjusted pass-through was {raw_pct:.0f}% (>100%) due to a concurrent {crude_drop:.1f} ct/L crude oil drop. Adjusted to isolated tax transmission.",
     "discount_validation_error": "⚠️ Validation Error: Pass-through ({pct:.0f}%) exceeds 100% of the tax cut!",

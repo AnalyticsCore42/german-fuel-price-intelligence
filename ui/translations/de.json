@@ -45,6 +45,7 @@
     "discount_1_period": "01.06. – 31.08.2022",
     "discount_2_period": "01.05. – 30.06.2026",
     "discount_baseline_concrete": "Vergleich: {start} – {end} ({days} Tage Vorzeitraum)",
+    "discount_baseline_did": "Methode: Deutschland vs. Euro-Länder ohne Steueränderung ({controls}), Preise ohne Steuern, 2 Wochen vorher vs. erste 2 Wochen (EU Weekly Oil Bulletin)",
     "discount_baseline_concrete_pre_event": "Vergleich: {start} – {end} ({days} Tage vor Stichtag)",
     "discount_validation_warning": "⚠️ Validierungshinweis: Unbereinigte Weitergabe lag bei {raw_pct:.0f}% (>100%), da der Rohölpreis nach dem Iran-Krieg zeitgleich um {crude_drop:.1f} ct/L fiel. Bereinigt auf tatsächliche Steuersenkungs-Transmission.",
     "discount_validation_error": "⚠️ Validierungsfehler: Weitergabe ({pct:.0f}%) übersteigt 100% der Steuersenkung!",

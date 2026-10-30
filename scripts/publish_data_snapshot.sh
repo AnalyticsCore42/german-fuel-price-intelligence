@@ -17,6 +17,7 @@ FILES=(
   data/dashboard/compliance_daily_trend.parquet
   data/dashboard/compliance_lateness_distribution.parquet
   data/dashboard/compliance_station_rankings.parquet
+  data/dashboard/tankrabatt_pass_through.parquet
 )
 
 for f in "${FILES[@]}"; do

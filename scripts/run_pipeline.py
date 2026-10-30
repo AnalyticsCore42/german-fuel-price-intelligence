@@ -19,6 +19,7 @@ from gasprice.fetch_refined_product_baseline import build_refined_product_baseli
 from gasprice.build_dashboard_dataset import build_dashboard_datasets, refresh_tax_and_spread_columns, _get_rss_mb
 from gasprice.station_price_stats import build_station_stats
 from gasprice.build_compliance_datasets import build_compliance_data
+from gasprice import oil_bulletin_pass_through
 
 
 def _run_step(step_num: int, total: int, label: str, func, *args) -> dict:
@@ -52,20 +53,22 @@ def main():
     stations_out = PROJECT_ROOT / "data" / "tankerkoenig" / "stations" / "cleaned-stations.parquet"
 
     step_stats = []
-    step_stats.append(_run_step(1, 7, "Cleaning station metadata",
+    step_stats.append(_run_step(1, 8, "Cleaning station metadata",
                                 clean_station_data, str(stations_in), str(stations_out)))
-    step_stats.append(_run_step(2, 7, "Updating Brent Crude & Exchange Rates",
+    step_stats.append(_run_step(2, 8, "Updating Brent Crude & Exchange Rates",
                                 update_macro_data))
-    step_stats.append(_run_step(3, 7, "Fetching Refined Product Baselines",
+    step_stats.append(_run_step(3, 8, "Fetching Refined Product Baselines",
                                 build_refined_product_baseline))
-    step_stats.append(_run_step(4, 7, "Building Dashboard Datasets",
+    step_stats.append(_run_step(4, 8, "Building Dashboard Datasets",
                                 build_dashboard_datasets))
-    step_stats.append(_run_step(5, 7, "Refreshing Tax & Spread Columns (full history)",
+    step_stats.append(_run_step(5, 8, "Refreshing Tax & Spread Columns (full history)",
                                 refresh_tax_and_spread_columns))
-    step_stats.append(_run_step(6, 7, "Building Station Price Stats",
+    step_stats.append(_run_step(6, 8, "Building Station Price Stats",
                                 build_station_stats))
-    step_stats.append(_run_step(7, 7, "Building 12:00 Rule Compliance Datasets",
+    step_stats.append(_run_step(7, 8, "Building 12:00 Rule Compliance Datasets",
                                 build_compliance_data))
+    step_stats.append(_run_step(8, 8, "Tankrabatt Pass-Through (EU Oil Bulletin)",
+                                oil_bulletin_pass_through.main))
 
     pipeline_elapsed = time.perf_counter() - pipeline_start
     peak_rss = max(s["rss_after_mb"] for s in step_stats)

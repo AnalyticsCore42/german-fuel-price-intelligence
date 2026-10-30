@@ -60,6 +60,7 @@ STATIONS_FILE = DATA_DIR / "tankerkoenig" / "stations" / "cleaned-stations.parqu
 COMPLIANCE_TREND_FILE = DATA_DIR / "dashboard" / "compliance_daily_trend.parquet"
 COMPLIANCE_RANKINGS_FILE = DATA_DIR / "dashboard" / "compliance_station_rankings.parquet"
 COMPLIANCE_LATENESS_FILE = DATA_DIR / "dashboard" / "compliance_lateness_distribution.parquet"
+PASS_THROUGH_FILE = DATA_DIR / "dashboard" / "tankrabatt_pass_through.parquet"
 
 # ==========================================
 # 1. SETUP & CONFIGURATION
@@ -1339,9 +1340,39 @@ def _format_baseline_dates(d_start: date, d_end: date, is_de: bool) -> tuple[str
     return d_start.strftime("%d/%m"), d_end.strftime("%d/%m/%Y")
 
 
-d1_kpi = _compute_discount_card_kpi(d1_start, d1_end, df_full, pump_price_col)
-d2_kpi = _compute_discount_card_kpi(d2_start, d2_actual_end, df_full, pump_price_col)
-d3_kpi = _compute_discount_card_kpi(d3_start, d3_actual_end, df_full, pump_price_col) if d3_start <= max_date else None
+@st.cache_data(show_spinner=False)
+def load_did_pass_through() -> dict:
+    if not PASS_THROUGH_FILE.exists():
+        return {}
+    return {(r["event"], r["fuel"]): r for r in pl.read_parquet(PASS_THROUGH_FILE).iter_rows(named=True)}
+
+
+def _apply_did_estimate(kpi: dict | None, event: str) -> dict | None:
+    """Swap the raw pump change for the EU Oil Bulletin difference-in-differences estimate, if one exists.
+    The raw change also holds crude/refining moves; the euro-area control countries cancel those out."""
+    did = load_did_pass_through().get((event, fuel_key))
+    if kpi is None or did is None:
+        return kpi
+    pass_pct = min(100.0, max(0.0, did["pass_through_pct"]))
+    passed_ct = did["statutory_ct"] * pass_pct / 100
+    return {
+        **kpi,
+        "tax_drop_ct": did["statutory_ct"],
+        "passed_ct": passed_ct,
+        "retained_ct": did["statutory_ct"] - passed_ct,
+        "pass_pct": pass_pct,
+        "pass_bar": pass_pct,
+        "absorb_bar": 100.0 - pass_pct,
+        "is_anomaly": False,
+        "did_controls": did["controls"],
+    }
+
+
+d1_kpi = _apply_did_estimate(_compute_discount_card_kpi(d1_start, d1_end, df_full, pump_price_col), "TR1")
+d2_kpi = _apply_did_estimate(_compute_discount_card_kpi(d2_start, d2_actual_end, df_full, pump_price_col), "TR2")
+d3_kpi = _apply_did_estimate(
+    _compute_discount_card_kpi(d3_start, d3_actual_end, df_full, pump_price_col) if d3_start <= max_date else None, "TR3"
+)
 
 for _kpi in (d1_kpi, d2_kpi, d3_kpi):
     if _kpi and _kpi["validation_error"]:
@@ -1380,6 +1411,8 @@ def _render_discount_card(
         else translate("discount_baseline_concrete")
     )
     footer = baseline_template.format(start=s_str, end=e_str, days=kpi["baseline_days"])
+    if kpi.get("did_controls"):
+        footer = translate("discount_baseline_did").format(controls=kpi["did_controls"].replace(" ", ", "))
     anomaly_html = ""
     if show_anomaly and kpi["is_anomaly"]:
         warn_text = translate("discount_validation_warning").format(
