@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ ./src/
 COPY ui/ ./ui/
 COPY data/*.parquet ./data/
+COPY data/dashboard/ ./data/dashboard/
 
 # 6. Expose Port 8080 (Cloud Run's default port)
 EXPOSE 8080
