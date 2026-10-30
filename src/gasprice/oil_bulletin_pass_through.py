@@ -98,7 +98,14 @@ def estimate_all(path=RAW_FILE) -> pl.DataFrame:
 
 
 def main() -> None:
-    download()
+    try:
+        download()
+    except requests.RequestException as e:
+        # weekly data: last week's file still gives the same window estimates
+        if not RAW_FILE.exists():
+            raise
+        print(f"Oil Bulletin download failed ({e}); using saved file from "
+              f"{datetime.fromtimestamp(RAW_FILE.stat().st_mtime):%Y-%m-%d}")
     df = estimate_all()
     OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(OUT_FILE)
